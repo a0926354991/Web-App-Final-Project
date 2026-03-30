@@ -1,0 +1,19 @@
+# Python 虛擬環境
+.venv/
+venv/
+ENV/
+env/
+
+# Python 快取檔案
+__pycache__/
+*.py[cod]
+*$py.class
+
+# macOS 系統檔案
+.DS_Store
+
+# IDE 設定 (VS Code)
+.vscode/
+
+# 環境變數/私密資訊 (如果你之後有用到 API Key)
+.env
