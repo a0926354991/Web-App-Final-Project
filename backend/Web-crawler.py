@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
@@ -17,7 +18,8 @@ from playwright.async_api import async_playwright, Page
 max_count = 9899  # 要蒐集並抓取的課程詳情頁數量
 # 站方實際路由為 /zh-TW/search/...；課程詳情為 /courses/{學期}/{流水號}
 START_URL = "https://course.ntu.edu.tw/zh-TW/search/quick"
-OUTPUT_CSV = "ntu_detailed_data.csv"
+_DATA_DIR = Path(__file__).resolve().parent / "data"
+OUTPUT_CSV = _DATA_DIR / "ntu_detailed_data.csv"
 SCROLL_PAUSE_MS = 1800
 DETAIL_EXTRA_WAIT_MS = 2500
 GOTO_TIMEOUT_MS = 90_000
@@ -461,6 +463,7 @@ async def run() -> None:
             "詳情頁URL",
         ]
         df = df[[c for c in cols if c in df.columns]]
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
         df.to_csv(OUTPUT_CSV, index=False, encoding="utf-8-sig")
         print(f"[{_now_ts()}] 已寫入 {OUTPUT_CSV}，共 {len(rows)} 筆。")
     else:
