@@ -1,2 +1,4 @@
 pandas>=2.0
 playwright>=1.40
+selenium>=4.0
+webdriver-manager>=4.0
