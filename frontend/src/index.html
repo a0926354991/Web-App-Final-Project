@@ -1,150 +1,540 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>台大個性化選課推薦與分析 App</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>台大個性化選課推薦與分析</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
 
-    <div class="app-container">
-        <header class="app-header">
-            <button class="hamburger" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
-            <div class="logo-section">
-                <div class="logo-placeholder">NTU</div>
-                <div>
-                    <div class="zh-title">台大個性化選課推薦與分析</div>
-                    <div class="en-title">NTU Personalized Course Recommendation</div>
-                </div>
-            </div>
-            <div class="user-profile-header">
-                <img src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
-                <span>未登入，請先登入</span>
-            </div>
-        </header>
+<div class="app-container">
 
-        <div class="main-layout">
-            <aside class="sidebar" id="sidebar">
-                <div class="sidebar-user">
-                    <img src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
-                    <span class="user-name">未登入</span>
-                    <span class="user-id">等待登入後顯示</span>
-                    <div class="status-container">
-                        <div class="status-dot waiting"></div>
-                        <span>等待登入 Waiting for login</span>
-                    </div>
-                </div>
-                <nav class="sidebar-nav">
-                    <a href="#" class="sidebar-item active">
-                        <i class="fas fa-user-edit"></i>
-                        <div class="sidebar-item-text">
-                            <span class="zh">使用者資訊輸入</span>
-                            <span class="en">User Info Input</span>
-                        </div>
-                    </a>
-                    <a href="#" class="sidebar-item">
-                        <i class="fas fa-history"></i>
-                        <div class="sidebar-item-text">
-                            <span class="zh">修課歷史紀錄</span>
-                            <span class="en">History</span>
-                        </div>
-                    </a>
-                    <a href="#" class="sidebar-item">
-                        <i class="fas fa-search"></i>
-                        <div class="sidebar-item-text">
-                            <span class="zh">課程探索與篩選</span>
-                            <span class="en">Course Discovery</span>
-                        </div>
-                    </a>
-                    <a href="#" class="sidebar-item">
-                        <i class="fas fa-chart-line"></i>
-                        <div class="sidebar-item-text">
-                            <span class="zh">個性化適合度分析</span>
-                            <span class="en">Fit Analysis</span>
-                        </div>
-                    </a>
-                </nav>
-                <div class="account-section">
-                    <a href="#" class="account-btn account-btn-login">
-                        <i class="fas fa-sign-in-alt"></i> 登入 Login
-                    </a>
-                    <a href="#" class="account-btn account-btn-logout">
-                        <i class="fas fa-sign-out-alt"></i> 登出 Logout
-                    </a>
-                </div>
-            </aside>
-
-            <main class="main-content">
-                <div class="dashboard-header">
-                    <h1 class="dashboard-title">儀表板 Dashboard</h1>
-                </div>
-
-                <div class="dashboard-grid">
-                    <div class="card radar-card">
-                        <div class="card-header">
-                            <h2 class="card-title">你的能力雷達圖 <span class="en">Your Skill Radar</span></h2>
-                        </div>
-                        <div class="radar-container">
-                            <canvas id="radarChart"></canvas>
-                        </div>
-                    </div>
-
-                    <div class="card recommended-card">
-                        <div class="card-header">
-                            <h2 class="card-title">為您推薦 <span class="en">Recommended</span></h2>
-                        </div>
-                        <div class="course-list">
-                            <div class="course-card">
-                                <div class="course-card-tag"><i class="fas fa-star" style="color:#FFD700"></i> 極度推薦
-                                </div>
-                                <div class="course-card-subtags">
-                                    <span class="tag">#給分甜</span>
-                                    <span class="tag">#期末報告</span>
-                                    <span class="tag">#不點名</span>
-                                    <span class="tag">#NLP</span>
-                                </div>
-                                <div class="course-card-details">
-                                    <span><i class="fas fa-book"></i> 自然語言處理</span>
-                                    <span><i class="fas fa-clock"></i> 3 學分</span>
-                                </div>
-                            </div>
-                            <div class="course-card">
-                                <div class="course-card-tag">適合度 85%</div>
-                                <div class="course-card-subtags">
-                                    <span class="tag">#邏輯訓練</span>
-                                    <span class="tag">#作業偏難</span>
-                                    <span class="tag">#扎實</span>
-                                </div>
-                                <div class="course-card-details">
-                                    <span><i class="fas fa-book"></i> 資料結構與演算法</span>
-                                    <span><i class="fas fa-clock"></i> 3 學分</span>
-                                </div>
-                            </div>
-                            <div class="course-card">
-                                <div class="course-card-tag">填補空堂</div>
-                                <div class="course-card-subtags">
-                                    <span class="tag">#輕鬆聽講</span>
-                                    <span class="tag">#無期中考</span>
-                                </div>
-                                <div class="course-card-details">
-                                    <span><i class="fas fa-book"></i> 藝術史導論</span>
-                                    <span><i class="fas fa-clock"></i> 2 學分</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
-        </div>
+  <!-- ===== HEADER ===== -->
+  <header class="app-header">
+    <button class="hamburger" id="hamburgerBtn"><i class="fas fa-bars"></i></button>
+    <div class="logo-section">
+      <div class="logo-circle">NTU</div>
+      <div>
+        <div class="logo-zh">台大個性化選課推薦</div>
+        <div class="logo-en">NTU Personalized Course Recommendation</div>
+      </div>
     </div>
+    <div class="header-right">
+      <div class="header-user" id="headerUser">
+        <img id="headerAvatar" src="" alt="avatar">
+        <span id="headerName">未登入</span>
+      </div>
+    </div>
+  </header>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="script.js"></script>
+  <div class="main-layout">
 
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-profile">
+        <img id="sidebarAvatar" src="" alt="avatar" class="profile-avatar">
+        <div class="profile-name" id="sidebarName">未登入</div>
+        <div class="profile-id" id="sidebarId">請先登入</div>
+        <div class="profile-status" id="profileStatus">
+          <span class="status-dot waiting"></span>
+          <span id="statusText">等待登入</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a class="nav-item active" data-view="dashboard">
+          <i class="fas fa-tachometer-alt"></i>
+          <div class="nav-item-text">
+            <span class="zh">個人儀表板</span>
+            <span class="en">Dashboard</span>
+          </div>
+        </a>
+        <a class="nav-item" data-view="discovery">
+          <i class="fas fa-search"></i>
+          <div class="nav-item-text">
+            <span class="zh">課程探索與篩選</span>
+            <span class="en">Course Discovery</span>
+          </div>
+        </a>
+        <a class="nav-item" data-view="history">
+          <i class="fas fa-history"></i>
+          <div class="nav-item-text">
+            <span class="zh">修課歷程管理</span>
+            <span class="en">Course History</span>
+          </div>
+        </a>
+        <a class="nav-item" data-view="schedule">
+          <i class="fas fa-calendar-week"></i>
+          <div class="nav-item-text">
+            <span class="zh">互動式課表</span>
+            <span class="en">My Schedule</span>
+          </div>
+        </a>
+        <a class="nav-item" data-view="analysis">
+          <i class="fas fa-chart-pie"></i>
+          <div class="nav-item-text">
+            <span class="zh">適合度分析</span>
+            <span class="en">Fit Analysis</span>
+          </div>
+        </a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <button class="btn-login" id="loginBtn"><i class="fas fa-sign-in-alt"></i> 登入 Login</button>
+        <button class="btn-logout hidden" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> 登出 Logout</button>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="main-content" id="mainContent">
+
+      <!-- === VIEW: DASHBOARD === -->
+      <div class="view active" id="view-dashboard">
+        <div class="view-header">
+          <h1>儀表板 <span class="subtitle">Dashboard</span></h1>
+          <div class="semester-badge">114學年 第2學期</div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card">
+            <i class="fas fa-book-open stat-icon blue"></i>
+            <div>
+              <div class="stat-value" id="statCredits">0</div>
+              <div class="stat-label">已修學分</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class="fas fa-graduation-cap stat-icon green"></i>
+            <div>
+              <div class="stat-value" id="statCourses">0</div>
+              <div class="stat-label">已修課程</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class="fas fa-star stat-icon yellow"></i>
+            <div>
+              <div class="stat-value" id="statGpa">-</div>
+              <div class="stat-label">平均 GPA</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class="fas fa-clock stat-icon red"></i>
+            <div>
+              <div class="stat-value" id="statScheduled">0</div>
+              <div class="stat-label">本學期課程</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <!-- Radar Chart -->
+          <div class="card radar-card">
+            <div class="card-header">
+              <h2 class="card-title"><i class="fas fa-spider"></i> 能力雷達圖 <span class="en-sub">Skill Radar</span></h2>
+              <span class="card-hint">根據您的修課歷程自動計算</span>
+            </div>
+            <div class="radar-wrap">
+              <canvas id="radarChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Recommended Courses -->
+          <div class="card recommend-card">
+            <div class="card-header">
+              <h2 class="card-title"><i class="fas fa-magic"></i> 為您推薦 <span class="en-sub">Recommended</span></h2>
+            </div>
+            <div class="recommend-list" id="recommendList">
+              <!-- injected by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- === VIEW: COURSE DISCOVERY === -->
+      <div class="view" id="view-discovery">
+        <div class="view-header">
+          <h1>課程探索 <span class="subtitle">Course Discovery</span></h1>
+        </div>
+
+        <div class="discovery-layout">
+          <!-- Filter Panel -->
+          <aside class="filter-panel" id="filterPanel">
+            <div class="filter-header">
+              <span><i class="fas fa-sliders-h"></i> 進階篩選</span>
+              <button class="btn-reset-filter" id="resetFilterBtn">重設</button>
+            </div>
+
+            <div class="filter-section">
+              <div class="filter-label">課程屬性</div>
+              <label class="checkbox-item">
+                <input type="checkbox" id="filterHasRating"> 只顯示有評價課程
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" id="filterNoEarlyMorning"> 絕對不要早八
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" id="filterEnglish"> 英文授課
+              </label>
+            </div>
+
+            <div class="filter-section">
+              <div class="filter-label">學分範圍</div>
+              <div class="range-row">
+                <input type="range" id="filterMinCredits" min="0" max="6" step="1" value="0">
+                <span id="filterMinCreditsVal">0</span> ~ <span id="filterMaxCreditsVal">6</span>
+                <input type="range" id="filterMaxCredits" min="0" max="6" step="1" value="6">
+              </div>
+            </div>
+
+            <div class="filter-section">
+              <div class="filter-label">給分甜度 ≥</div>
+              <div class="range-row-single">
+                <input type="range" id="filterMinSweet" min="0" max="5" step="0.5" value="0">
+                <span id="filterMinSweetVal">不限</span>
+              </div>
+            </div>
+
+            <div class="filter-section">
+              <div class="filter-label">上課時段</div>
+              <div class="time-checkboxes">
+                <label class="checkbox-item"><input type="checkbox" class="filter-day" value="一"> 週一</label>
+                <label class="checkbox-item"><input type="checkbox" class="filter-day" value="二"> 週二</label>
+                <label class="checkbox-item"><input type="checkbox" class="filter-day" value="三"> 週三</label>
+                <label class="checkbox-item"><input type="checkbox" class="filter-day" value="四"> 週四</label>
+                <label class="checkbox-item"><input type="checkbox" class="filter-day" value="五"> 週五</label>
+              </div>
+            </div>
+
+            <div class="filter-section">
+              <div class="filter-label">排序方式</div>
+              <select id="sortBy" class="filter-select">
+                <option value="name">課名</option>
+                <option value="sweet">給分甜度</option>
+                <option value="quality">課程品質</option>
+                <option value="easy">輕鬆程度</option>
+              </select>
+            </div>
+
+            <button class="btn-apply-filter" id="applyFilterBtn">
+              <i class="fas fa-search"></i> 套用篩選
+            </button>
+          </aside>
+
+          <!-- Course List Area -->
+          <div class="course-area">
+            <div class="search-bar-row">
+              <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input type="text" id="searchInput" placeholder="搜尋課名、教授、課號、系所...">
+              </div>
+              <button class="btn-toggle-filter" id="toggleFilterBtn">
+                <i class="fas fa-filter"></i> 篩選
+              </button>
+            </div>
+            <div class="result-meta" id="resultMeta">顯示全部課程</div>
+            <div class="course-grid" id="courseGrid">
+              <!-- injected by JS -->
+            </div>
+            <div class="pagination" id="pagination">
+              <!-- injected by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- === VIEW: COURSE HISTORY === -->
+      <div class="view" id="view-history">
+        <div class="view-header">
+          <h1>修課歷程 <span class="subtitle">Course History</span></h1>
+        </div>
+
+        <div class="history-layout">
+          <!-- Add Course Form -->
+          <div class="card history-form-card">
+            <div class="card-header">
+              <h2 class="card-title"><i class="fas fa-plus-circle"></i> 新增修課紀錄</h2>
+            </div>
+            <form id="historyForm" class="history-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>課程名稱 <span class="required">*</span></label>
+                  <input type="text" id="hCourseName" placeholder="例：微積分" required>
+                </div>
+                <div class="form-group">
+                  <label>教授姓名</label>
+                  <input type="text" id="hProfessor" placeholder="例：陳志誠">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>學期</label>
+                  <input type="text" id="hSemester" placeholder="例：113-1">
+                </div>
+                <div class="form-group">
+                  <label>學分數 <span class="required">*</span></label>
+                  <input type="number" id="hCredits" min="0" max="6" step="0.5" placeholder="3" required>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>成績 / 等第</label>
+                  <select id="hGrade">
+                    <option value="">選擇成績</option>
+                    <option value="A+">A+ (4.3)</option>
+                    <option value="A">A (4.0)</option>
+                    <option value="A-">A- (3.7)</option>
+                    <option value="B+">B+ (3.3)</option>
+                    <option value="B">B (3.0)</option>
+                    <option value="B-">B- (2.7)</option>
+                    <option value="C+">C+ (2.3)</option>
+                    <option value="C">C (2.0)</option>
+                    <option value="F">F (0.0)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>課程類別</label>
+                  <select id="hCategory">
+                    <option value="">選擇類別</option>
+                    <option value="math">數理邏輯</option>
+                    <option value="cs">程式實作</option>
+                    <option value="lang">文字表達</option>
+                    <option value="humanities">人文素養</option>
+                    <option value="team">團隊協作</option>
+                    <option value="other">其他</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group full-width">
+                <label>個人心得</label>
+                <textarea id="hNote" rows="3" placeholder="記錄這門課的心得、困難、收穫..."></textarea>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn-primary"><i class="fas fa-plus"></i> 新增</button>
+                <button type="button" class="btn-secondary" id="importBtn"><i class="fas fa-file-import"></i> 匯入範例資料</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- History Table -->
+          <div class="card history-table-card">
+            <div class="card-header">
+              <h2 class="card-title"><i class="fas fa-list-alt"></i> 我的修課清單</h2>
+              <span class="course-count" id="historyCount">共 0 門</span>
+            </div>
+            <div class="history-table-wrap">
+              <table class="history-table" id="historyTable">
+                <thead>
+                  <tr>
+                    <th>課程名稱</th>
+                    <th>教授</th>
+                    <th>學期</th>
+                    <th>學分</th>
+                    <th>成績</th>
+                    <th>類別</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                  <tr class="empty-row">
+                    <td colspan="7">尚無修課紀錄，請新增或匯入資料</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- === VIEW: SCHEDULE === -->
+      <div class="view" id="view-schedule">
+        <div class="view-header">
+          <h1>互動式課表 <span class="subtitle">My Schedule</span></h1>
+          <button class="btn-secondary" id="addToScheduleBtn">
+            <i class="fas fa-plus"></i> 從推薦加入課程
+          </button>
+        </div>
+
+        <div class="schedule-container">
+          <div class="schedule-legend" id="scheduleLegend">
+            <!-- injected by JS -->
+          </div>
+          <div class="schedule-wrap">
+            <table class="schedule-table" id="scheduleTable">
+              <!-- injected by JS -->
+            </table>
+          </div>
+        </div>
+
+        <!-- Recommendation Overlay Panel -->
+        <div class="schedule-suggest-panel" id="scheduleSuggestPanel">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fas fa-magic"></i> 空堂推薦填補</h3>
+            </div>
+            <div id="gapSuggestions">
+              <!-- injected by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- === VIEW: FIT ANALYSIS === -->
+      <div class="view" id="view-analysis">
+        <div class="view-header">
+          <h1>適合度分析 <span class="subtitle">Fit Analysis</span></h1>
+        </div>
+
+        <div class="analysis-search-row">
+          <div class="search-bar">
+            <i class="fas fa-search"></i>
+            <input type="text" id="analysisSearchInput" placeholder="輸入課程名稱進行分析...">
+          </div>
+          <button class="btn-primary" id="analyzeBtn"><i class="fas fa-flask"></i> 分析</button>
+        </div>
+
+        <div class="analysis-grid" id="analysisGrid">
+          <!-- Quick picks -->
+          <div class="card analysis-pick-card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fas fa-bolt"></i> 快速選擇</h3>
+            </div>
+            <div class="quick-picks" id="quickPicks">
+              <!-- injected by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Analysis Result (hidden until analyzed) -->
+        <div class="analysis-result hidden" id="analysisResult">
+          <div class="analysis-main-grid">
+            <!-- Fit Score -->
+            <div class="card fit-score-card">
+              <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-percentage"></i> 適合度評分</h3>
+              </div>
+              <div class="fit-score-body">
+                <div class="donut-wrap">
+                  <canvas id="fitDonut"></canvas>
+                  <div class="donut-center">
+                    <div class="donut-pct" id="donutPct">0%</div>
+                    <div class="donut-label">適合度</div>
+                  </div>
+                </div>
+                <div class="fit-dimensions" id="fitDimensions">
+                  <!-- injected by JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Analysis Text -->
+            <div class="card fit-analysis-card">
+              <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-file-alt"></i> 分析短評</h3>
+              </div>
+              <div class="analysis-course-header" id="analysisCourseHeader">
+                <!-- course name, tags -->
+              </div>
+              <div class="analysis-text" id="analysisText">
+                <!-- injected by JS -->
+              </div>
+              <div class="analysis-ratings" id="analysisRatings">
+                <!-- rating bars -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Prerequisites Warning -->
+          <div class="card prereq-card" id="prereqCard">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fas fa-exclamation-triangle"></i> 先修與擋修預警</h3>
+            </div>
+            <div id="prereqContent">
+              <!-- injected by JS -->
+            </div>
+          </div>
+
+          <!-- Reviews Section -->
+          <div class="card reviews-card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fas fa-comments"></i> 歷年評價 <span class="en-sub">Student Reviews</span></h3>
+              <span class="review-count" id="reviewCount">0 則評價</span>
+            </div>
+            <div class="reviews-list" id="reviewsList">
+              <!-- injected by JS -->
+            </div>
+            <div class="reviews-pagination" id="reviewsPagination">
+              <!-- injected by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ===== COURSE DETAIL MODAL ===== -->
+<div class="modal-overlay hidden" id="courseModal">
+  <div class="modal-box">
+    <button class="modal-close" id="modalCloseBtn"><i class="fas fa-times"></i></button>
+    <div class="modal-content" id="modalContent">
+      <!-- injected by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST NOTIFICATION ===== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ===== PREREQUISITE ALERT MODAL ===== -->
+<div class="modal-overlay hidden" id="prereqModal">
+  <div class="modal-box modal-small">
+    <div class="prereq-modal-header">
+      <i class="fas fa-exclamation-triangle warning-icon"></i>
+      <h3>先修條件不符</h3>
+    </div>
+    <div id="prereqModalBody"></div>
+    <div class="prereq-modal-actions">
+      <button class="btn-secondary" id="prereqCancel">取消選課</button>
+      <button class="btn-danger" id="prereqIgnore">我了解風險，仍要加入</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LOGIN MODAL ===== -->
+<div class="modal-overlay hidden" id="loginModal">
+  <div class="modal-box modal-small">
+    <button class="modal-close" id="loginModalClose"><i class="fas fa-times"></i></button>
+    <div class="login-modal">
+      <div class="login-logo">
+        <div class="logo-circle large">NTU</div>
+      </div>
+      <h2>台大選課系統登入</h2>
+      <p class="login-hint">使用台大信箱登入以使用個人化功能</p>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>學號 / 台大信箱</label>
+          <input type="text" id="loginId" placeholder="b12xxxxxx 或 b12xxxxxx@ntu.edu.tw" required>
+        </div>
+        <div class="form-group">
+          <label>姓名</label>
+          <input type="text" id="loginName" placeholder="王小明" required>
+        </div>
+        <div class="form-group">
+          <label>系所</label>
+          <input type="text" id="loginDept" placeholder="資訊工程學系">
+        </div>
+        <button type="submit" class="btn-primary full-width">
+          <i class="fas fa-sign-in-alt"></i> 登入 Login
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="script.js"></script>
 </body>
-
 </html>
