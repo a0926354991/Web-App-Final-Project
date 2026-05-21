@@ -2265,3 +2265,214 @@
                 /* 滑入畫面 */
             }
         }
+
+        /* =========================================
+           Loading skeleton (取代 spinner)
+           ========================================= */
+        @keyframes skeleton-shimmer {
+            0%   { background-position: -400px 0; }
+            100% { background-position: 400px 0; }
+        }
+
+        .skeleton {
+            display: inline-block;
+            background: linear-gradient(90deg, #eee 0%, #f5f5f5 50%, #eee 100%);
+            background-size: 800px 100%;
+            animation: skeleton-shimmer 1.4s infinite linear;
+            border-radius: 4px;
+            color: transparent;
+            user-select: none;
+        }
+
+        .skeleton.block {
+            display: block;
+        }
+
+        tr.skeleton-row td {
+            padding: 14px 12px;
+        }
+
+        .skeleton-text {
+            height: 12px;
+            width: 80%;
+        }
+
+        .skeleton-text.short { width: 40%; }
+        .skeleton-text.long  { width: 95%; }
+
+        .drawer-skeleton {
+            padding: 24px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .drawer-skeleton .sk-title {
+            height: 28px;
+            width: 60%;
+        }
+
+        .drawer-skeleton .sk-block {
+            height: 100px;
+            width: 100%;
+            border-radius: 8px;
+        }
+
+        body.theme-dark .skeleton {
+            background: linear-gradient(90deg, #252830 0%, #2d3138 50%, #252830 100%);
+        }
+
+        /* =========================================
+           Keyboard shortcut hint (在 header 顯示)
+           ========================================= */
+        .shortcut-hint {
+            font-size: 0.75rem;
+            color: #999;
+            padding: 2px 6px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            background: #f5f5f5;
+            margin-left: 6px;
+            font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        }
+
+        body.theme-dark .shortcut-hint {
+            background: #1f2229;
+            border-color: #353a45;
+            color: #888;
+        }
+
+        /* =========================================
+           Dark mode polish (補完之前漏掉的)
+           ========================================= */
+        body.theme-dark .empty-banner {
+            background: #2b2410;
+            border-color: #4a3d18;
+            color: #d4b96a;
+        }
+
+        body.theme-dark .empty-banner a {
+            color: #ffb74d;
+        }
+
+        body.theme-dark .toast {
+            background: #2d3138;
+            color: #e0e0e0;
+            border: 1px solid #353a45;
+        }
+
+        body.theme-dark .toast.success { border-left-color: #66bb6a; }
+        body.theme-dark .toast.error   { border-left-color: #ef5350; }
+        body.theme-dark .toast.warn    { border-left-color: #ffa726; }
+        body.theme-dark .toast.info    { border-left-color: #42a5f5; }
+
+        body.theme-dark .placeholder-card,
+        body.theme-dark .pagination,
+        body.theme-dark .schedule-toolbar,
+        body.theme-dark .history-toolbar {
+            color: #b0b0b0;
+        }
+
+        body.theme-dark .pagination button:not(:disabled) {
+            background: #1f2229;
+            border-color: #353a45;
+            color: #c0c0c0;
+        }
+
+        body.theme-dark .pagination button:not(:disabled):hover {
+            background: #2d3138;
+        }
+
+        body.theme-dark .pagination button:disabled {
+            background: #1a1d23;
+            border-color: #2a2d33;
+            color: #555;
+        }
+
+        body.theme-dark .drawer-section h3,
+        body.theme-dark .drawer-section h4 {
+            color: #d0d0d0;
+        }
+
+        body.theme-dark .fit-bar-fill {
+            opacity: 0.85;
+        }
+
+        body.theme-dark .review-summary,
+        body.theme-dark .review-template-row,
+        body.theme-dark .review-template-field {
+            color: #c0c0c0;
+        }
+
+        body.theme-dark .badge,
+        body.theme-dark .post-meta {
+            color: #999;
+        }
+
+        body.theme-dark .schedule-empty-state,
+        body.theme-dark .wishlist-empty-state {
+            color: #888;
+        }
+
+        body.theme-dark .login-hint {
+            background: #1f2229;
+            border-color: #353a45;
+            color: #b0b0b0;
+        }
+
+        body.theme-dark .filter-bar select option {
+            background: #1a1d23;
+            color: #e0e0e0;
+        }
+
+        body.theme-dark .schedule-conflict-banner {
+            background: #3a1f1c;
+            border-color: #80322a;
+            color: #ef9a9a;
+        }
+
+        body.theme-dark .auth-modal {
+            color: #e0e0e0;
+        }
+
+        body.theme-dark .auth-modal-tabs button {
+            color: #999;
+        }
+
+        body.theme-dark .auth-modal-tabs button.active {
+            color: #e0e0e0;
+            border-bottom-color: var(--active-blue);
+        }
+
+        body.theme-dark .related-item {
+            background: #1f2229;
+            border-color: #353a45;
+            color: #d0d0d0;
+        }
+
+        body.theme-dark .related-item:hover {
+            background: #2d3138;
+        }
+
+        body.theme-dark .related-source.cf {
+            background: #1c3147;
+            color: #64b5f6;
+        }
+
+        body.theme-dark .related-source.content {
+            background: #1f2229;
+            color: #b0b0b0;
+        }
+
+        body.theme-dark .tab-active,
+        body.theme-dark .tabs button.active {
+            color: #e0e0e0;
+        }
+
+        body.theme-dark .tabs {
+            border-bottom-color: #353a45;
+        }
+
+        body.theme-dark .review-item {
+            border-color: #353a45;
+        }

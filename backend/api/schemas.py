@@ -79,6 +79,7 @@ class LoginRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     token: str
+    expires_at: str | None = None
     user: "UserInfo"
 
 

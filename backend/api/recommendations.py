@@ -69,16 +69,36 @@ def _compile_tag_pattern(tag: str) -> re.Pattern:
 
 
 def init_indices(conn: sqlite3.Connection) -> None:
-    """建立課程文字索引 + 每門課的 ability profile + 每個 interest tag 的 IDF。"""
+    """建立課程文字索引 + 每門課的 ability profile + 每個 interest tag 的 IDF。
+
+    Ability profile 來源:
+    - 優先用 course_ability table (LLM 標注的 0-100 連續分數)
+    - 沒有資料就 fallback 到關鍵字 mapping (boolean: 該能力 required 或不 required)
+    """
     if _CACHE.get("ready"):
         return
 
     rows = conn.execute(
         """
-        SELECT serial_no, course_name, department, objectives, overview, grading
+        SELECT serial_no, course_code, course_name, department, objectives, overview, grading
         FROM courses
         """
     ).fetchall()
+
+    # 先載入 LLM-tagged ability scores (如果有的話)。key = course_code
+    llm_ability: dict[str, dict[str, int]] = {}
+    try:
+        llm_rows = conn.execute(
+            "SELECT course_code, logic, writing, coding, humanities, teamwork FROM course_ability"
+        ).fetchall()
+        for r in llm_rows:
+            llm_ability[r["course_code"]] = {
+                "logic": r["logic"], "writing": r["writing"], "coding": r["coding"],
+                "humanities": r["humanities"], "teamwork": r["teamwork"],
+            }
+    except sqlite3.OperationalError:
+        # 表還沒建 — 全部走 keyword fallback
+        pass
 
     # 每個 interest tag 預先 compile pattern (ASCII 用 \b\b, 中文用 substring)
     tag_patterns = {tag: _compile_tag_pattern(tag) for tag in INTEREST_TAGS_ALL}
@@ -88,7 +108,10 @@ def init_indices(conn: sqlite3.Connection) -> None:
     }
 
     text_index: dict[str, dict[str, str]] = {}
-    ability_profile: dict[str, set[str]] = {}
+    # ability_profile[serial_no] = {ability: weight_0_to_100, ...}
+    # - 來自 LLM tag: 5 軸都有 0-100 連續分數
+    # - 來自 keyword fallback: 命中的軸 = 100,沒命中 = 0
+    ability_profile: dict[str, dict[str, int]] = {}
 
     for r in rows:
         name = (r["course_name"] or "")
@@ -103,12 +126,15 @@ def init_indices(conn: sqlite3.Connection) -> None:
             "ov": ov,
         }
 
-        full = name + " " + dept + " " + obj + " " + ov
-        prof: set[str] = set()
-        for ability, patterns in ability_kw_patterns.items():
-            if any(p.search(full) for p in patterns):
-                prof.add(ability)
-        ability_profile[r["serial_no"]] = prof
+        if r["course_code"] in llm_ability:
+            ability_profile[r["serial_no"]] = dict(llm_ability[r["course_code"]])
+        else:
+            full = name + " " + dept + " " + obj + " " + ov
+            prof: dict[str, int] = {}
+            for ability, patterns in ability_kw_patterns.items():
+                if any(p.search(full) for p in patterns):
+                    prof[ability] = 100
+            ability_profile[r["serial_no"]] = prof
 
     # IDF: 在幾門課裡至少出現一次 → log(N / df)
     n_total = len(text_index)
@@ -182,9 +208,18 @@ def compute_interest_score(
 def compute_ability_score(
     profile: dict[str, Any], serial_no: str
 ) -> tuple[float, list[str]]:
-    """回傳 (score, required_abilities)。required 是該課的關鍵字命中項。"""
-    required = _CACHE["ability_profile"].get(serial_no, set())
-    if not required:
+    """回傳 (score, required_abilities)。
+
+    course_ability[serial] = {ability: weight_0_to_100, ...}。score 是用 weight
+    當權重對使用者各項能力做加權平均 (LLM-tagged 模式),
+    或單純取命中項的平均 (keyword fallback 模式,weight 都是 100)。
+
+    required_abilities = weight > 0 的 ability 排序,給 explanation 用。
+    """
+    course_prof: dict[str, int] = _CACHE["ability_profile"].get(serial_no, {})
+    # 只看有 weight 的軸
+    weights = {a: w for a, w in course_prof.items() if w > 0}
+    if not weights:
         return 50.0, []
 
     user_vals = {
@@ -194,8 +229,11 @@ def compute_ability_score(
         "humanities": profile["ability_humanities"],
         "teamwork":   profile["ability_teamwork"],
     }
-    score = sum(user_vals[a] for a in required) / len(required)
-    return score, sorted(required)
+    total_w = sum(weights.values())
+    score = sum(weights[a] * user_vals[a] for a in weights) / total_w
+    # 依 weight 由高到低排序,顯示「最重要的能力先」
+    required = sorted(weights, key=lambda a: -weights[a])
+    return score, required
 
 
 # =========================================================================

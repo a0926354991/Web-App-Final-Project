@@ -93,6 +93,10 @@ python backend/scripts/ingest_csv.py
 > → `regex_structure_reviews.py` 或 `llm_structure_reviews.py`。
 > LLM 路徑需要 `ANTHROPIC_API_KEY` 環境變數。
 
+> 想升級 ability 推薦?跑 `python backend/llm_ability_tags.py` 把 5249 個 course_code
+> 跑 Claude Batch API 各標 5 軸能力(0-100),完成後 `python backend/scripts/ingest_ability_tags.py`
+> 把結果灌進 `course_ability` 表;`init_indices` 會自動偵測,有資料就用 LLM 標的,否則 fallback 關鍵字 mapping。
+
 ### 3. 啟動 server
 
 **選項 A:本機開發 (有 hot reload)**
@@ -141,8 +145,9 @@ docker compose up --build
 | GET | `/departments` | 系所列表（給前端下拉）| – |
 | GET | `/teachers/{name}` | 教師概覽 + 該教師所有課 + 統計 | – |
 | POST | `/auth/register` | 註冊 | – |
-| POST | `/auth/login` | 登入 | – |
+| POST | `/auth/login` | 登入（同 IP 60s 內 8 次 → 429）| – |
 | POST | `/auth/logout` | 登出（刪 session token）| ✓ |
+| POST | `/auth/refresh` | 延長現有 session 到再 30 天 | ✓ |
 | GET | `/auth/me` | 取得目前使用者 | ✓ |
 | GET | `/me/profile` | 取得偏好（不存在則回預設）| ✓ |
 | PUT | `/me/profile` | 寫入偏好（upsert）| ✓ |
@@ -225,20 +230,20 @@ ASCII tag（例如 `AI`）用 `\bAI\b` 詞邊界匹配，避免被 `application`
 
 - 密碼用 **PBKDF2-HMAC-SHA256 + 16-byte salt + 200,000 iterations**，存在 `users.password_hash`。
 - Session token 用 `secrets.token_urlsafe(32)`，存 `sessions` 表，HTTP header `Authorization: Bearer <token>`。
-- CORS 全開（`allow_origins=["*"]`），方便本機開發；正式部署前要鎖到特定 origin。
+- Session 預設 30 天過期(`sessions.expires_at`)，過期請求會自動刪 token 並回 401；前端可呼叫 `POST /auth/refresh` 延長。
+- Login rate limit：同 client IP 60 秒內最多 8 次嘗試，超過回 429。
+- CORS 預設只允許 `localhost:5500` / `127.0.0.1:5500`；正式部署設環境變數 `ALLOWED_ORIGINS=https://your.domain` (或逗號分隔多個)。
 - SQL 全部用 parameterized query。
 - 前端輸出全部 HTML-escape。
-- Token 目前**沒有過期機制**，登入後永久有效（未來工作見下）。
 
 ---
 
 ## 未來工作
 
-- **Session 過期 / refresh**：目前 token 永久有效，正式部署前要加。
 - **演算法層面**：
   - 用 sentence embedding 算課程概述跟使用者偏好的相似度（取代 substring TF）。
-  - 用 LLM（Claude 等）為每門課標 ability tag，比關鍵字精準。
-  - 加 collaborative filtering：「修過 X 的人也修了 Y」。
+  - ~~用 LLM 為每門課標 ability tag~~ → 已有 pipeline (`backend/llm_ability_tags.py`)，跑了即用。
+  - ~~加 collaborative filtering~~ → 已有 (`/courses/{}/related` 走 CF + content hybrid)。
 - **OAuth**：Google 登入作為第二種登入方式。
 - **覆蓋更多評價**：PTT NTUcourse 板覆蓋率有限，可以加 ColleGo、學校教學意見調查等資料來源。
-- **更完整的 dark mode**：目前覆蓋主要 surface，少數細節（圖表 tooltip、icon color）仍是亮色預設。
+- **CSRF**：目前是 bearer token (CSRF 影響低)，如果之後改用 cookie 要再加。
