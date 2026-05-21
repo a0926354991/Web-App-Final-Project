@@ -39,6 +39,28 @@ function toast(message, type = 'info', durationMs = 3000) {
 }
 
 // ==========================================================================
+// Loading skeleton helpers
+// ==========================================================================
+function skeletonRowsHTML(cols, n = 6) {
+    const td = `<td><span class="skeleton skeleton-text"></span></td>`;
+    return Array.from({ length: n }, () =>
+        `<tr class="skeleton-row">${td.repeat(cols)}</tr>`
+    ).join('');
+}
+
+function drawerSkeletonHTML() {
+    return `
+        <div class="drawer-skeleton">
+            <span class="skeleton block sk-title"></span>
+            <span class="skeleton block sk-block"></span>
+            <span class="skeleton block sk-block" style="height: 60px;"></span>
+            <span class="skeleton block sk-block" style="height: 120px;"></span>
+            <span class="skeleton block sk-block" style="height: 80px;"></span>
+        </div>
+    `;
+}
+
+// ==========================================================================
 // Dark mode toggle (持久化到 localStorage)
 // ==========================================================================
 const THEME_KEY = 'ntu_app_theme';
@@ -46,7 +68,23 @@ function applyTheme(name) {
     document.body.classList.toggle('theme-dark', name === 'dark');
     const icon = document.querySelector('#theme-toggle i');
     if (icon) icon.className = name === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+    updateChartThemeFromBody();
 }
+
+function updateChartThemeFromBody() {
+    if (typeof radarChart === 'undefined' || !radarChart) return;
+    const dark = document.body.classList.contains('theme-dark');
+    const grid = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+    const angle = dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+    const labelColor = dark ? '#c0c0c0' : '#444';
+    const tickColor = dark ? '#999' : '#888';
+    radarChart.options.scales.r.grid.color = grid;
+    radarChart.options.scales.r.angleLines.color = angle;
+    radarChart.options.scales.r.pointLabels.color = labelColor;
+    radarChart.options.scales.r.ticks.color = tickColor;
+    radarChart.update();
+}
+
 applyTheme(localStorage.getItem(THEME_KEY) || 'light');
 document.getElementById('theme-toggle').addEventListener('click', () => {
     const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
@@ -162,6 +200,9 @@ const radarChart = new Chart(radarCtx, {
     },
 });
 
+// 如果頁面載入時就是 dark mode,radarChart 創立後立刻同步
+updateChartThemeFromBody();
+
 function updateRadarFromProfile(p) {
     radarChart.data.datasets[0].data = [
         p.ability_logic,
@@ -258,7 +299,7 @@ async function searchCourses({ keepParams = false } = {}) {
     params.set('limit', PAGE_SIZE);
     params.set('offset', discoverState.offset);
 
-    els.resultsBody.innerHTML = '<tr><td colspan="6" class="empty-row">載入中…</td></tr>';
+    els.resultsBody.innerHTML = skeletonRowsHTML(8, 6);
     els.pagination.hidden = true;
 
     try {
@@ -406,7 +447,7 @@ function closeCompareModal() { compareModal.hidden = true; }
 async function openCompareModal() {
     if (compareState.serials.size === 0) return;
     compareModal.hidden = false;
-    compareBody.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入課程資料…</div>';
+    compareBody.innerHTML = drawerSkeletonHTML();
 
     const serials = [...compareState.serials];
     try {
@@ -568,12 +609,51 @@ document.addEventListener('click', (e) => {
     const item = document.querySelector(`.sidebar-item[data-target="${target}"]`);
     if (item) item.click();
 });
+// 全域快捷鍵
+function focusSearchInput() {
+    // 切到探索 view + focus 搜尋框
+    const discoverNav = document.querySelector('.sidebar-item[data-target="discover"]');
+    if (discoverNav && !discoverNav.classList.contains('active')) {
+        discoverNav.click();
+    }
+    const input = document.getElementById('search-input');
+    if (input) {
+        input.focus();
+        input.select();
+    }
+}
+
 document.addEventListener('keydown', (e) => {
+    // Esc: 關閉抽屜 / modal,並 blur 當前 input
     if (e.key === 'Escape') {
         closeDrawer();
         closeAuthModal();
         closeHistoryModal();
         closeCompareModal();
+        if (document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+        return;
+    }
+
+    // Cmd/Ctrl + K: 任意位置都觸發 (即使在 input 內)
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        focusSearchInput();
+        return;
+    }
+
+    // 不在輸入框內時的快捷鍵
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || e.target.isContentEditable) {
+        return;
+    }
+
+    // "/" 快速 focus 搜尋框
+    if (e.key === '/') {
+        e.preventDefault();
+        focusSearchInput();
     }
 });
 
@@ -589,7 +669,7 @@ async function openTeacherInDrawer(name) {
     drawer.classList.add('open');
     drawerOverlay.classList.add('open');
     drawerTitle.textContent = '載入中…';
-    drawerBody.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入教師資料…</div>';
+    drawerBody.innerHTML = drawerSkeletonHTML();
 
     try {
         const res = await fetch(`${API_BASE}/teachers/${encodeURIComponent(name)}`);
@@ -643,7 +723,7 @@ async function openDrawer(serialNo) {
     drawer.classList.add('open');
     drawerOverlay.classList.add('open');
     drawerTitle.textContent = '載入中…';
-    drawerBody.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入課程資料…</div>';
+    drawerBody.innerHTML = drawerSkeletonHTML();
 
     try {
         const [detail, reviewsResp, fit, related] = await Promise.all([
@@ -1180,6 +1260,7 @@ async function renderHistoryView() {
 
     if (!historyState.loaded) {
         historyEls.meta.textContent = '載入中…';
+        historyEls.body.innerHTML = skeletonRowsHTML(8, 5);
         await loadHistory();
     }
     renderHistoryTable();
@@ -1316,9 +1397,9 @@ async function loadDashboardRecommendations() {
             </div>`;
         return;
     }
-    listEl.innerHTML = `<div class="course-card placeholder-mini">
-        <p style="color:#999;text-align:center;margin:20px 0">載入中…</p>
-    </div>`;
+    listEl.innerHTML = Array.from({ length: 3 }, () =>
+        '<div class="course-card placeholder-mini" style="padding:14px"><span class="skeleton block" style="height:70px"></span></div>'
+    ).join('');
     try {
         const items = await fetch(`${API_BASE}/me/recommendations?limit=5`, {
             headers: authHeaders(),
@@ -1488,7 +1569,9 @@ async function renderFitAnalysisView() {
 
     // Top 20 推薦
     const listEl = document.getElementById('fit-list');
-    listEl.innerHTML = '載入中…';
+    listEl.innerHTML = Array.from({ length: 5 }, () =>
+        '<div class="fit-list-item" style="padding:14px"><span class="skeleton block" style="height:56px"></span></div>'
+    ).join('');
     try {
         const items = await fetch(`${API_BASE}/me/recommendations?limit=20`, {
             headers: authHeaders(),

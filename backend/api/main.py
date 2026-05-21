@@ -9,15 +9,17 @@ FastAPI app — 課程查詢 / 評價檢索 API。
 
 from __future__ import annotations
 
+import os
 import sqlite3
 
 import sqlite3 as _sqlite3
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .auth import (
+    check_login_rate_limit,
     get_current_user,
     hash_password,
     init_auth_tables,
@@ -78,10 +80,23 @@ def _startup() -> None:
     finally:
         conn.close()
 
-# 前端目前是靜態檔，先全開 CORS 方便開發
+# CORS: 從 env var ALLOWED_ORIGINS 讀 (comma-separated),沒設就允許本機 dev origin。
+# 正式部署請設定環境變數明確列出允許的 origin。
+_env_origins = os.environ.get("ALLOWED_ORIGINS", "").strip()
+if _env_origins == "*":
+    allow_origins = ["*"]
+elif _env_origins:
+    allow_origins = [o.strip() for o in _env_origins.split(",") if o.strip()]
+else:
+    allow_origins = [
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:5173",  # vite dev (將來如果用)
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -324,21 +339,26 @@ def register(
     user_id = cur.lastrowid
     token = new_token()
     conn.execute(
-        "INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id)
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+30 days'))", (token, user_id)
     )
     conn.commit()
 
     row = conn.execute(
         "SELECT id, username, created_at FROM users WHERE id = ?", (user_id,)
     ).fetchone()
-    return AuthResponse(token=token, user=_row_to_user_info(row))
+    sess = conn.execute(
+        "SELECT expires_at FROM sessions WHERE token = ?", (token,)
+    ).fetchone()
+    return AuthResponse(token=token, expires_at=sess["expires_at"], user=_row_to_user_info(row))
 
 
 @app.post("/auth/login", response_model=AuthResponse)
 def login(
     body: LoginRequest,
+    request: Request,
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> AuthResponse:
+    check_login_rate_limit(request)
     row = conn.execute(
         "SELECT id, username, password_hash, salt, created_at FROM users WHERE username = ?",
         (body.username.strip(),),
@@ -348,10 +368,33 @@ def login(
 
     token = new_token()
     conn.execute(
-        "INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, row["id"])
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+30 days'))", (token, row["id"])
     )
     conn.commit()
-    return AuthResponse(token=token, user=_row_to_user_info(row))
+    sess = conn.execute(
+        "SELECT expires_at FROM sessions WHERE token = ?", (token,)
+    ).fetchone()
+    return AuthResponse(token=token, expires_at=sess["expires_at"], user=_row_to_user_info(row))
+
+
+@app.post("/auth/refresh", response_model=AuthResponse)
+def refresh_session(
+    authorization: str = Header(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+    current: sqlite3.Row = Depends(get_current_user),
+) -> AuthResponse:
+    """延長現有 session token 的過期時間 (再 30 天)。
+    依然回傳同一個 token,前端不用換 (但會拿到新的 expires_at)。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    conn.execute(
+        "UPDATE sessions SET expires_at = datetime('now', '+30 days') WHERE token = ?",
+        (token,),
+    )
+    conn.commit()
+    sess = conn.execute(
+        "SELECT expires_at FROM sessions WHERE token = ?", (token,)
+    ).fetchone()
+    return AuthResponse(token=token, expires_at=sess["expires_at"], user=_row_to_user_info(current))
 
 
 @app.post("/auth/logout", status_code=204)
