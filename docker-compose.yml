@@ -1,0 +1,30 @@
+# 一鍵啟動 backend + frontend
+# 啟動: docker compose up --build
+# 開: http://localhost:5500
+#
+# 注意: backend container 需要 backend/data/app.db (CSV 已 mount 進去,
+# 第一次跑要在 host 跑過 `python backend/scripts/ingest_csv.py` 產出 app.db)
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ntu-recommend-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # 把 host 的 data 目錄掛進去,SQLite db 跟 CSV 共用
+      - ./backend/data:/app/backend/data
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: ntu-recommend-frontend
+    ports:
+      - "5500:80"
+    depends_on:
+      - backend

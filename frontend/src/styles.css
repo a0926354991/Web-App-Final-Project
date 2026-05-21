@@ -1,3 +1,8 @@
+        /* 拉大 base font-size 讓整體 UI 文字更易讀 (預設 16 → 18px) */
+        html {
+            font-size: 18px;
+        }
+
         /* 讓 HTML `hidden` 屬性能蓋過 display:flex 等規則 */
         [hidden] {
             display: none !important;
@@ -123,6 +128,7 @@
         /* 側欄 (Sidebar) */
         .sidebar {
             width: 260px;
+            flex-shrink: 0;  /* 不讓 flex 寬內容把 sidebar 擠窄 */
             background-color: var(--dark-blue);
             color: white;
             display: flex;
@@ -130,6 +136,11 @@
             overflow-y: auto;
             transition: all 0.3s ease;
             z-index: 100;
+        }
+
+        /* main-content 一定要可以 shrink (預設 min-width: auto 會讓它撐到內容寬度) */
+        .main-content {
+            min-width: 0;
         }
 
         .sidebar-user {
@@ -1018,6 +1029,83 @@
         }
 
         /* =========================================
+           列印 (PDF 匯出)
+           ========================================= */
+
+        @media print {
+            body { background: white; color: black; }
+            .app-header,
+            .sidebar,
+            .schedule-toolbar button,
+            .results-table .action-cell,
+            .results-table th.action-cell,
+            .toast-container,
+            .compare-fab,
+            .auth-modal-overlay,
+            .compare-modal-overlay,
+            .detail-drawer,
+            .drawer-overlay,
+            .empty-banner {
+                display: none !important;
+            }
+            .main-content { padding: 0; overflow: visible; }
+            .main-layout { overflow: visible; }
+            .app-container { height: auto; overflow: visible; }
+            html, body { height: auto; overflow: visible; }
+            .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+            .schedule-grid { min-width: 0; }
+            .results-table-wrapper { overflow: visible; border: 1px solid #ccc; box-shadow: none; }
+        }
+
+        /* =========================================
+           Toast 通知
+           ========================================= */
+
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 400;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 260px;
+            max-width: 480px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: auto;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success { background: #2e7d32; }
+        .toast.error   { background: #c62828; }
+        .toast.info    { background: #1565c0; }
+        .toast.warn    { background: #ef6c00; }
+
+        .toast i {
+            font-size: 1.1rem;
+        }
+
+        /* =========================================
            我的課表 (Schedule)
            ========================================= */
 
@@ -1137,6 +1225,33 @@
             background: #e8f5e9;
             border-color: #4CAF50;
             color: #2e7d32;
+        }
+
+        .btn-toggle-wishlist {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border: 1px solid #ddd;
+            background: white;
+            color: #555;
+            margin-top: 8px;
+            margin-right: 6px;
+            transition: all 0.15s;
+        }
+
+        .btn-toggle-wishlist:hover {
+            border-color: #e91e63;
+            color: #e91e63;
+        }
+
+        .btn-toggle-wishlist.in-wishlist {
+            background: #fce4ec;
+            border-color: #e91e63;
+            color: #c2185b;
         }
 
         /* schedule course list 內的卡片 */

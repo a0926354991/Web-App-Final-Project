@@ -15,6 +15,30 @@ function authHeaders() {
 }
 
 // ==========================================================================
+// Toast 通知 — 取代 alert()
+// ==========================================================================
+const TOAST_ICONS = {
+    success: 'fa-check-circle',
+    error: 'fa-times-circle',
+    info: 'fa-info-circle',
+    warn: 'fa-exclamation-triangle',
+};
+
+function toast(message, type = 'info', durationMs = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<i class="fas ${TOAST_ICONS[type] || 'fa-info-circle'}"></i><span>${message}</span>`;
+    container.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 250);
+    }, durationMs);
+}
+
+// ==========================================================================
 // Dark mode toggle (持久化到 localStorage)
 // ==========================================================================
 const THEME_KEY = 'ntu_app_theme';
@@ -81,6 +105,9 @@ sidebarItems.forEach(item => {
         }
         if (target === 'schedule') {
             renderScheduleView();
+        }
+        if (target === 'wishlist') {
+            renderWishlistView();
         }
 
         if (window.innerWidth <= 992) {
@@ -339,7 +366,7 @@ const compareBody = document.getElementById('compare-modal-body');
 function toggleCompare(serial, checked) {
     if (checked) {
         if (compareState.serials.size >= MAX_COMPARE) {
-            alert(`最多比較 ${MAX_COMPARE} 門課`);
+            toast(`最多比較 ${MAX_COMPARE} 門課`, 'warn');
             const cb = els.resultsBody.querySelector(`.compare-check[data-serial="${serial}"]`);
             if (cb) cb.checked = false;
             return;
@@ -714,7 +741,7 @@ function renderDrawerContent(d, reviews) {
         <button class="drawer-add-history-btn ${inHist ? 'in-history' : ''}" id="drawer-add-history-btn" ${inHist ? 'disabled' : ''}>
             ${inHist ? '<i class="fas fa-check"></i> 已在修課歷史中' : '<i class="fas fa-plus"></i> 加入修課歷史'}
         </button>` : '';
-    const addBtn = scheduleToggleBtn(d) + histBtn;
+    const addBtn = scheduleToggleBtn(d) + wishlistToggleBtn(d.serial_no) + histBtn;
 
     return `
         <div class="drawer-section">
@@ -908,6 +935,7 @@ async function applyLoggedInUI(user) {
     const p = await loadProfile();
     if (p) updateRadarFromProfile(p);
     await loadHistory();
+    await loadWishlist();
     loadDashboardRecommendations();
 }
 
@@ -929,6 +957,9 @@ function applyLoggedOutUI() {
     historyState.items = [];
     historyState.serialSet = new Set();
     historyState.loaded = false;
+    wishlistState.items = [];
+    wishlistState.serialSet = new Set();
+    wishlistState.loaded = false;
     loadDashboardRecommendations();
     updateLoggedOutHints();
 }
@@ -1087,7 +1118,7 @@ profileEls.form.addEventListener('submit', async (e) => {
         setTimeout(() => { profileEls.saved.hidden = true; }, 2500);
     } catch (err) {
         console.error(err);
-        alert('儲存失敗,請稍後再試');
+        toast('儲存失敗,請稍後再試', 'error');
     } finally {
         profileEls.save.disabled = false;
     }
@@ -1190,7 +1221,7 @@ function renderHistoryTable() {
                 renderHistoryTable();
             } catch (err) {
                 console.error(err);
-                alert('刪除失敗');
+                toast('刪除失敗', 'error');
             }
         });
     });
@@ -1497,6 +1528,146 @@ async function renderFitAnalysisView() {
 }
 
 // ==========================================================================
+// 想修清單 (Wishlist) — backend
+// ==========================================================================
+const wishlistState = {
+    items: [],
+    serialSet: new Set(),
+    loaded: false,
+};
+
+async function loadWishlist() {
+    if (!getToken()) {
+        wishlistState.items = [];
+        wishlistState.serialSet = new Set();
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/me/wishlist`, { headers: authHeaders() });
+        if (!res.ok) return;
+        wishlistState.items = await res.json();
+        wishlistState.serialSet = new Set(wishlistState.items.map(i => i.serial_no));
+        wishlistState.loaded = true;
+    } catch (err) {
+        console.warn('loadWishlist failed', err);
+    }
+}
+
+async function addToWishlist(serial_no) {
+    if (!getToken()) { openAuthModal('login'); return; }
+    try {
+        const res = await fetch(`${API_BASE}/me/wishlist`, {
+            method: 'POST',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serial_no }),
+        });
+        if (!res.ok && res.status !== 409) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || res.status);
+        }
+        await loadWishlist();
+        refreshWishlistButtons();
+        toast(res.status === 409 ? '已在想修清單中' : '已加入想修清單', res.status === 409 ? 'info' : 'success');
+    } catch (err) {
+        toast(`加入失敗:${err.message}`, 'error');
+    }
+}
+
+async function removeFromWishlist(wishlist_id) {
+    try {
+        const res = await fetch(`${API_BASE}/me/wishlist/${wishlist_id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+        });
+        if (!res.ok) throw new Error(res.status);
+        await loadWishlist();
+        refreshWishlistButtons();
+    } catch (err) {
+        toast('刪除失敗', 'error');
+    }
+}
+
+async function renderWishlistView() {
+    const needLogin = document.getElementById('wishlist-need-login');
+    const content = document.getElementById('wishlist-content');
+    if (!getToken()) {
+        content.hidden = true;
+        needLogin.hidden = false;
+        return;
+    }
+    needLogin.hidden = true;
+    content.hidden = false;
+    if (!wishlistState.loaded) await loadWishlist();
+
+    const body = document.getElementById('wishlist-body');
+    const meta = document.getElementById('wishlist-meta');
+    const items = wishlistState.items;
+    meta.textContent = `共 ${items.length} 門想修課`;
+    if (items.length === 0) {
+        body.innerHTML = '<tr><td colspan="7" class="empty-row">還是空的 — 到課程探索點愛心按鈕加入想修</td></tr>';
+        return;
+    }
+    body.innerHTML = items.map(w => `
+        <tr data-serial="${escapeAttr(w.serial_no)}">
+            <td>${escapeHtml(w.course_code)}</td>
+            <td>${escapeHtml(w.course_name)}</td>
+            <td>${escapeHtml(w.teacher)}</td>
+            <td>${escapeHtml(w.credits)}</td>
+            <td>${escapeHtml(w.department)}</td>
+            <td>${escapeHtml(w.notes) || ''}</td>
+            <td class="action-cell">
+                <button class="btn-delete-row" data-wid="${w.id}" title="移除"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>
+    `).join('');
+
+    body.querySelectorAll('tr').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-delete-row')) return;
+            openDrawer(row.dataset.serial);
+        });
+    });
+    body.querySelectorAll('.btn-delete-row').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await removeFromWishlist(btn.dataset.wid);
+            renderWishlistView();
+        });
+    });
+}
+
+function wishlistToggleBtn(serial_no) {
+    if (!getToken()) return '';
+    const has = wishlistState.serialSet.has(serial_no);
+    return `<button class="btn-toggle-wishlist ${has ? 'in-wishlist' : ''}" data-wishlist-toggle="${escapeAttr(serial_no)}">
+        ${has ? '<i class="fas fa-heart"></i> 已加入想修' : '<i class="far fa-heart"></i> 加入想修'}
+    </button>`;
+}
+
+function refreshWishlistButtons() {
+    document.querySelectorAll('[data-wishlist-toggle]').forEach(btn => {
+        const has = wishlistState.serialSet.has(btn.dataset.wishlistToggle);
+        btn.classList.toggle('in-wishlist', has);
+        btn.innerHTML = has ? '<i class="fas fa-heart"></i> 已加入想修' : '<i class="far fa-heart"></i> 加入想修';
+    });
+}
+
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-wishlist-toggle]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const serial = btn.dataset.wishlistToggle;
+    if (wishlistState.serialSet.has(serial)) {
+        // 找對應 wishlist_id 刪掉
+        const item = wishlistState.items.find(w => w.serial_no === serial);
+        if (item) removeFromWishlist(item.id);
+    } else {
+        addToWishlist(serial);
+    }
+});
+
+// ==========================================================================
 // 我的課表 (My Schedule) — localStorage 持久化
 // ==========================================================================
 const SCHEDULE_KEY = 'ntu_app_schedule';
@@ -1638,6 +1809,23 @@ document.getElementById('schedule-clear').addEventListener('click', () => {
     refreshScheduleButtons();
 });
 
+// === PDF 匯出 (用瀏覽器列印 → 存成 PDF) ===
+function exportToPDF(viewId, title) {
+    // 切到目標 view 確保它可見才列印
+    const allViews = document.querySelectorAll('.view');
+    const wasVisible = {};
+    allViews.forEach(v => { wasVisible[v.id] = v.hidden; });
+    document.body.classList.add('printing');
+    document.body.dataset.printingView = viewId;
+    window.print();
+    document.body.classList.remove('printing');
+    delete document.body.dataset.printingView;
+}
+
+document.getElementById('schedule-export').addEventListener('click', () => exportToPDF('view-schedule', '我的課表'));
+document.getElementById('history-export').addEventListener('click', () => exportToPDF('view-history', '修課歷史'));
+document.getElementById('wishlist-export').addEventListener('click', () => exportToPDF('view-wishlist', '想修清單'));
+
 // === 在抽屜 / compare modal / cards 加「加入課表」按鈕 ===
 function scheduleToggleBtn(course) {
     const has = inSchedule(course.serial_no);
@@ -1661,7 +1849,7 @@ document.addEventListener('click', async (e) => {
             const c = await fetch(`${API_BASE}/courses/${encodeURIComponent(serial)}`).then(r => r.json());
             addToSchedule(c);
         } catch (err) {
-            alert('載入課程資料失敗');
+            toast('載入課程資料失敗', 'error');
             return;
         }
     }
