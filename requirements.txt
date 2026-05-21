@@ -3,3 +3,6 @@ playwright>=1.40
 requests>=2.31
 beautifulsoup4>=4.12
 anthropic>=0.92
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5

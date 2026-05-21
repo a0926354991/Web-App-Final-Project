@@ -17,3 +17,7 @@ __pycache__/
 
 # 環境變數/私密資訊 (如果你之後有用到 API Key)
 .env
+
+# SQLite 資料庫 (由 ingest 腳本產生)
+backend/data/*.db
+backend/data/*.db-journal
