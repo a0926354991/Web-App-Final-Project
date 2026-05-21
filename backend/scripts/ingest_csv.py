@@ -115,9 +115,8 @@ CREATE INDEX idx_structured_course_id ON reviews_structured(course_id);
 
 
 def main() -> None:
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-
+    # 只 DROP / 重建 3 張資料表 (SCHEMA_SQL 內已含 DROP),
+    # 保留同檔內的 users / sessions / user_profiles / user_history
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA_SQL)
 

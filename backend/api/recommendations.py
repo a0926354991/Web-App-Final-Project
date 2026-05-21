@@ -123,8 +123,19 @@ def init_indices(conn: sqlite3.Connection) -> None:
         )
         idf[tag] = math.log(n_total / max(df, 1))
 
+    # 每門課命中哪些 interest tag (供「相關課程」用)
+    interest_tags_per_course: dict[str, set[str]] = {}
+    for serial, parts in text_index.items():
+        hit_tags: set[str] = set()
+        for tag, pat in tag_patterns.items():
+            if (pat.search(parts["name"]) or pat.search(parts["dept"])
+                    or pat.search(parts["obj"]) or pat.search(parts["ov"])):
+                hit_tags.add(tag)
+        interest_tags_per_course[serial] = hit_tags
+
     _CACHE["text_index"] = text_index
     _CACHE["ability_profile"] = ability_profile
+    _CACHE["interest_tags"] = interest_tags_per_course
     _CACHE["idf"] = idf
     _CACHE["tag_patterns"] = tag_patterns
     _CACHE["ready"] = True
@@ -333,6 +344,208 @@ def compute_fit(
     fit["required_abilities"] = required_abilities
     fit["explanation"] = compute_explanation(profile, fit, matched_interests, required_abilities)
     return fit
+
+
+# =========================================================================
+# 相關課程 (related courses)
+# =========================================================================
+
+
+def _content_similarity(
+    a_serial: str,
+    b_serial: str,
+    courses_meta: dict[str, dict],
+) -> float:
+    """0-100 分,加權:dept 30 + code prefix 20 + ability Jaccard ×30 + interest Jaccard ×20。"""
+    if a_serial == b_serial:
+        return 0.0
+
+    text = _CACHE["text_index"]
+    abil = _CACHE["ability_profile"]
+    interest = _CACHE["interest_tags"]
+    if a_serial not in text or b_serial not in text:
+        return 0.0
+
+    score = 0.0
+    # dept (相同 30 分; 部分相同 — 如多系所 join string — 10 分)
+    a_dept = text[a_serial]["dept"]
+    b_dept = text[b_serial]["dept"]
+    if a_dept and b_dept:
+        if a_dept == b_dept:
+            score += 30
+        elif a_dept in b_dept or b_dept in a_dept:
+            score += 15
+
+    # course code 前綴 (字母部分,如 'Math' / 'CSIE')
+    code_a = courses_meta.get(a_serial, {}).get("course_code", "")
+    code_b = courses_meta.get(b_serial, {}).get("course_code", "")
+    import re as _re
+    prefix_a = _re.match(r"^[A-Za-z]+", code_a)
+    prefix_b = _re.match(r"^[A-Za-z]+", code_b)
+    if prefix_a and prefix_b and prefix_a.group() == prefix_b.group():
+        score += 20
+
+    # ability Jaccard
+    a_abil = abil.get(a_serial, set())
+    b_abil = abil.get(b_serial, set())
+    if a_abil | b_abil:
+        score += 30 * len(a_abil & b_abil) / len(a_abil | b_abil)
+
+    # interest tag Jaccard
+    a_tag = interest.get(a_serial, set())
+    b_tag = interest.get(b_serial, set())
+    if a_tag | b_tag:
+        score += 20 * len(a_tag & b_tag) / len(a_tag | b_tag)
+
+    return round(score, 1)
+
+
+def find_related_by_content(
+    target_serial: str,
+    conn: sqlite3.Connection,
+    limit: int = 5,
+) -> list[dict]:
+    """回傳 [{serial_no, course_code, course_name, teacher, dept, credits, score, source}, ...]"""
+    # 拿全部課程基本資料 (這份只 query 一次,可以接受)
+    rows = conn.execute(
+        "SELECT serial_no, course_code, course_name, teacher, department, credits FROM courses"
+    ).fetchall()
+    courses_meta = {r["serial_no"]: dict(r) for r in rows}
+    if target_serial not in courses_meta:
+        return []
+    target_code = courses_meta[target_serial]["course_code"]
+
+    scored = []
+    seen_codes = {target_code}
+    for serial in courses_meta:
+        if serial == target_serial:
+            continue
+        score = _content_similarity(target_serial, serial, courses_meta)
+        if score < 25:  # 不到一定分數不算「相關」
+            continue
+        code = courses_meta[serial]["course_code"]
+        if code in seen_codes:
+            continue  # 同 course_code 跨學期/教師只取一筆代表
+        seen_codes.add(code)
+        scored.append((score, courses_meta[serial]))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    out = []
+    for score, c in scored[:limit]:
+        out.append({
+            "serial_no": c["serial_no"],
+            "course_code": c["course_code"],
+            "course_name": c["course_name"],
+            "teacher": c["teacher"] or "",
+            "department": c["department"] or "",
+            "credits": c["credits"] or "",
+            "score": score,
+            "source": "content",
+        })
+    return out
+
+
+def find_related_by_cf(
+    target_serial: str,
+    conn: sqlite3.Connection,
+    limit: int = 5,
+    min_support: int = 3,
+) -> list[dict]:
+    """Collaborative filtering Jaccard。
+
+    要 ≥ min_support 個使用者共修才採用,避免雜訊。
+    回傳 [{serial_no, course_code, course_name, teacher, dept, credits, score, source}, ...]
+    """
+    # 拿 target_serial 對應的 course_code
+    row = conn.execute(
+        "SELECT course_code FROM courses WHERE serial_no = ?", (target_serial,)
+    ).fetchone()
+    if row is None:
+        return []
+    target_code = row["course_code"]
+
+    # 修過 target_code 的 users
+    users_target = {
+        r["user_id"]
+        for r in conn.execute(
+            """
+            SELECT DISTINCT h.user_id
+            FROM user_history h
+            JOIN courses c ON c.serial_no = h.serial_no
+            WHERE c.course_code = ?
+            """,
+            (target_code,),
+        ).fetchall()
+    }
+    if len(users_target) < min_support:
+        return []
+
+    # 對每個其他 course_code,算 Jaccard
+    candidates = conn.execute(
+        """
+        SELECT c.course_code, GROUP_CONCAT(DISTINCT h.user_id) AS user_ids
+        FROM user_history h
+        JOIN courses c ON c.serial_no = h.serial_no
+        WHERE c.course_code != ?
+        GROUP BY c.course_code
+        """,
+        (target_code,),
+    ).fetchall()
+
+    scored = []
+    for r in candidates:
+        users_b = set(int(u) for u in r["user_ids"].split(","))
+        intersect = users_target & users_b
+        if len(intersect) < min_support:
+            continue
+        jaccard = len(intersect) / len(users_target | users_b)
+        scored.append((round(jaccard * 100, 1), r["course_code"], len(intersect)))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    out = []
+    for score, code, n in scored[:limit]:
+        rep = conn.execute(
+            """
+            SELECT serial_no, course_code, course_name, teacher, department, credits
+            FROM courses
+            WHERE course_code = ?
+            ORDER BY serial_no DESC LIMIT 1
+            """,
+            (code,),
+        ).fetchone()
+        if rep is None:
+            continue
+        out.append({
+            "serial_no": rep["serial_no"],
+            "course_code": rep["course_code"],
+            "course_name": rep["course_name"],
+            "teacher": rep["teacher"] or "",
+            "department": rep["department"] or "",
+            "credits": rep["credits"] or "",
+            "score": score,
+            "source": "cf",
+            "n_users": n,
+        })
+    return out
+
+
+def find_related_courses(
+    target_serial: str,
+    conn: sqlite3.Connection,
+    limit: int = 5,
+) -> list[dict]:
+    """先試 CF,不夠就 fallback 到 content。"""
+    cf = find_related_by_cf(target_serial, conn, limit=limit)
+    if len(cf) >= limit:
+        return cf
+    # 不夠就補 content,排除已在 cf 結果裡的 course_code
+    cf_codes = {r["course_code"] for r in cf}
+    content = [
+        r for r in find_related_by_content(target_serial, conn, limit=limit * 2)
+        if r["course_code"] not in cf_codes
+    ]
+    return cf + content[: limit - len(cf)]
 
 
 def profile_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:

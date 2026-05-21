@@ -619,32 +619,80 @@ async function openDrawer(serialNo) {
     drawerBody.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入課程資料…</div>';
 
     try {
-        const [detail, reviewsResp, fit] = await Promise.all([
+        const [detail, reviewsResp, fit, related] = await Promise.all([
             fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}`).then(r => r.json()),
             fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}/reviews`).then(r => r.json()),
             loadDrawerFit(serialNo),
+            fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}/related?limit=5`).then(r => r.ok ? r.json() : []),
         ]);
         drawerTitle.textContent = detail.course_name;
-        drawerBody.innerHTML = renderFitBox(fit) + renderDrawerContent(detail, reviewsResp.items);
+        drawerBody.innerHTML = renderFitBox(fit)
+            + renderDrawerContent(detail, reviewsResp.items)
+            + renderRelatedSection(related);
         const addBtn = document.getElementById('drawer-add-history-btn');
         if (addBtn) {
             addBtn.addEventListener('click', () => {
                 openHistoryModal(detail.serial_no, detail.course_name);
             });
         }
+        drawerBody.querySelectorAll('.related-item').forEach(el => {
+            el.addEventListener('click', () => openDrawer(el.dataset.serial));
+        });
     } catch (err) {
         console.error(err);
         drawerBody.innerHTML = '<p class="drawer-empty">載入失敗</p>';
     }
 }
 
+function renderRelatedSection(related) {
+    if (!related || related.length === 0) return '';
+    const cfCount = related.filter(r => r.source === 'cf').length;
+    const label = cfCount > 0 ? `修過 X 也修了 (${cfCount} 來自其他使用者紀錄)` : '相關課程';
+    const items = related.map(r => {
+        const tag = r.source === 'cf'
+            ? `<span class="related-tag related-cf">CF · ${r.score.toFixed(0)}%</span>`
+            : `<span class="related-tag related-content">內容類似 · ${r.score.toFixed(0)}</span>`;
+        return `
+            <div class="related-item teacher-course-row" data-serial="${escapeAttr(r.serial_no)}">
+                <div class="teacher-course-main">
+                    <div class="teacher-course-name">${escapeHtml(r.course_name)} <span class="teacher-course-code">${escapeHtml(r.course_code)}</span></div>
+                    <div class="teacher-course-meta">${escapeHtml(r.teacher) || '—'} · ${escapeHtml(r.credits)} 學分</div>
+                </div>
+                ${tag}
+            </div>
+        `;
+    }).join('');
+    return `
+        <div class="drawer-section">
+            <h3>${label}</h3>
+            ${items}
+        </div>
+    `;
+}
+
 let currentDrawerSerial = null;
 
 function renderDrawerContent(d, reviews) {
     currentDrawerSerial = d.serial_no;
+    // 把有 summary 的「評價文」排前面,「問題/求救/Re:」這類無 summary 的排後面
+    const sortedReviews = [...reviews].sort((a, b) => {
+        const aHas = a.summary ? 1 : 0;
+        const bHas = b.summary ? 1 : 0;
+        return bHas - aHas;
+    });
+
     const reviewsHtml = reviews.length === 0
         ? '<p class="drawer-empty" style="margin-top: 10px;">尚無 PTT 評價</p>'
-        : reviews.map(r => `
+        : sortedReviews.map(r => {
+            const hasSummary = !!r.summary;
+            // 沒 summary → 顯示貼文標題 + 說明這是討論串
+            const body = hasSummary
+                ? `<div class="review-summary">${escapeHtml(r.summary)}</div>`
+                : `<div class="review-summary" style="color:#888">
+                       <div style="font-weight:500;color:#555;margin-bottom:4px">${escapeHtml(r.post_title) || '(無標題)'}</div>
+                       <span style="font-size:0.78rem">這是討論串(非 [評價] 模板文),點原文閱讀完整內容</span>
+                   </div>`;
+            return `
             <div class="review-item">
                 <div class="review-meta">
                     ${r.recommendation ? `<span class="badge rec">推薦 ${escapeHtml(r.recommendation)}/5</span>` : ''}
@@ -653,12 +701,13 @@ function renderDrawerContent(d, reviews) {
                     ${r.year_term ? `<span class="badge">${escapeHtml(r.year_term)}</span>` : ''}
                     ${r.post_tag ? `<span class="badge">${escapeHtml(r.post_tag)}</span>` : ''}
                 </div>
-                <div class="review-summary">${escapeHtml(r.summary) || '(無摘要)'}</div>
+                ${body}
                 <a class="review-link" href="${escapeAttr(r.post_url)}" target="_blank" rel="noopener">
                     <i class="fas fa-external-link-alt"></i> 看原文
                 </a>
             </div>
-        `).join('');
+            `;
+        }).join('');
 
     const inHist = historyState.serialSet.has(d.serial_no);
     const histBtn = getToken() ? `

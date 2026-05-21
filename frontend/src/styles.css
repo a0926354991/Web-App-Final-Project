@@ -1625,6 +1625,39 @@
             line-height: 1.5;
         }
 
+        /* 相關課程 tag (drawer 內) */
+        .related-tag {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 10px;
+            white-space: nowrap;
+            font-weight: 600;
+        }
+
+        .related-tag.related-cf {
+            background: #fff3e0;
+            color: #ef6c00;
+            border: 1px solid #ffcc80;
+        }
+
+        .related-tag.related-content {
+            background: #e8eaf6;
+            color: #3949ab;
+            border: 1px solid #c5cae9;
+        }
+
+        body.theme-dark .related-tag.related-cf {
+            background: #3a2415;
+            border-color: #6d4c1f;
+            color: #ffb74d;
+        }
+
+        body.theme-dark .related-tag.related-content {
+            background: #1a2030;
+            border-color: #3949ab;
+            color: #9fa8da;
+        }
+
         /* 教師頁 (沿用 detail drawer) */
         .teacher-link {
             color: var(--active-blue);

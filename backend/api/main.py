@@ -28,6 +28,7 @@ from .db import DB_PATH, get_conn
 from .recommendations import (
     aggregate_course_stats,
     compute_fit,
+    find_related_courses,
     init_indices,
     profile_row_to_dict,
 )
@@ -156,6 +157,20 @@ def get_course(
     d = dict(row)
     d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
     return CourseDetail(**d)
+
+
+@app.get("/courses/{serial_no}/related")
+def related_courses(
+    serial_no: str,
+    limit: int = Query(5, ge=1, le=20),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> list[dict]:
+    row = conn.execute(
+        "SELECT 1 FROM courses WHERE serial_no = ?", (serial_no,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, f"course {serial_no} not found")
+    return find_related_courses(serial_no, conn, limit=limit)
 
 
 @app.get("/courses/{serial_no}/reviews", response_model=ReviewListResponse)
