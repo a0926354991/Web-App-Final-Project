@@ -165,6 +165,7 @@ def _extract_req_type_and_dept(text: str) -> tuple[str, str]:
 
 
 def _extract_schedule_time(text: str) -> str:
+    # 1. label-based:有的頁面有「(上課)時間」label
     for pat in (
         r"時間\s*\n\s*([^\n\r]+)",
         r"上課時間\s*\n\s*([^\n\r]+)",
@@ -173,7 +174,21 @@ def _extract_schedule_time(text: str) -> str:
         m = re.search(pat, text)
         if m:
             return m.group(1).strip()
-    # 部分頁面無「時間」標題，僅在「N 類」上一行顯示節次（例：二 6, 7, 8, 9）
+
+    # 2. 找「整行只有 weekday + 數字/A-D + 分隔符」的純 schedule 行
+    #    很多頁面這欄沒 label,就是一行 "一 3, 4 / 四 1" 這種樣子
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line or not re.match(r"^[一二三四五六日]", line):
+            continue
+        # 整行只能由 weekday、數字、A-D、空白、逗號、斜線、頓號等組成
+        if not re.fullmatch(r"[一二三四五六日\d\sA-D,，/、·\-~～]+", line):
+            continue
+        if not re.search(r"\d|[A-D]", line):
+            continue
+        return line
+
+    # 3. fallback (原版):「N 類」前一行如果是 weekday 開頭
     m = re.search(r"\n([一二三四五六日天][^\n\r]{0,48})\s*\n\s*\d+\s*類", text)
     if m:
         line = m.group(1).strip()
