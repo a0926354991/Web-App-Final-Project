@@ -1,5 +1,5 @@
 """
-一次性：把 backend/data/ 下三個 CSV 灌進 SQLite (app.db)。
+把 backend/data/ 下 CSV 灌進 SQLite (app.db)。
 
 表結構：
   courses             — 一列 = 一筆「學期 + 課號 + 教師」開課；PK = 流水號
@@ -7,10 +7,15 @@
   reviews_structured  — Claude 結構化結果；PK = custom_id
 
 join：reviews.course_id ↔ courses.course_code（= 原 CSV 的「課號」）
+
+兩種模式：
+- 預設(--rebuild)：DROP 三張資料表重建,從預設的三個 CSV 重灌(會清掉舊資料)
+- --append-courses <csv>：只 append 新學期的 courses CSV,既有資料完整保留
 """
 
 from __future__ import annotations
 
+import argparse
 import sqlite3
 from pathlib import Path
 
@@ -114,9 +119,8 @@ CREATE INDEX idx_structured_course_id ON reviews_structured(course_id);
 """
 
 
-def main() -> None:
-    # 只 DROP / 重建 3 張資料表 (SCHEMA_SQL 內已含 DROP),
-    # 保留同檔內的 users / sessions / user_profiles / user_history
+def rebuild() -> None:
+    """從預設三個 CSV 重新建表 (會清掉既有 courses / reviews_raw / reviews_structured)。"""
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA_SQL)
 
@@ -142,6 +146,61 @@ def main() -> None:
     conn.commit()
     conn.close()
     print(f"\n✓ wrote {DB_PATH} ({DB_PATH.stat().st_size / 1_000_000:.1f} MB)")
+
+
+def append_courses(csv_path: Path) -> None:
+    """把 courses CSV append 進現有 courses 表;serial_no 重複則跳過。"""
+    if not csv_path.exists():
+        raise SystemExit(f"找不到 CSV: {csv_path}")
+    if not DB_PATH.exists():
+        raise SystemExit(f"找不到 {DB_PATH} — 先跑 rebuild 模式 (預設) 建好基本資料")
+
+    print(f"loading {csv_path.name} (append mode) ...")
+    df = pd.read_csv(csv_path, dtype=str).fillna("")
+    df = df.rename(columns=COURSE_COL_MAP)
+    df = df.drop_duplicates(subset=["serial_no"])
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    before = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+
+    cols = list(COURSE_COL_MAP.values())
+    placeholders = ",".join("?" * len(cols))
+    col_list = ",".join(cols)
+    rows_inserted = 0
+    rows_skipped = 0
+    for _, r in df.iterrows():
+        if not r.get("serial_no"):
+            rows_skipped += 1
+            continue
+        values = tuple(r.get(c, "") for c in cols)
+        cur = conn.execute(
+            f"INSERT OR IGNORE INTO courses ({col_list}) VALUES ({placeholders})",
+            values,
+        )
+        if cur.rowcount:
+            rows_inserted += 1
+        else:
+            rows_skipped += 1
+    conn.commit()
+    after = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+    conn.close()
+
+    print(f"      inserted: {rows_inserted} / skipped (duplicate or empty): {rows_skipped}")
+    print(f"      courses table: {before} → {after} rows")
+    print("\n✓ append 完成。請重啟 backend (uvicorn) 讓 recommendations 索引重建。")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--append-courses", type=Path, default=None,
+                    help="把指定的 courses CSV append 進現有 DB (不刪舊資料)")
+    args = ap.parse_args()
+
+    if args.append_courses:
+        append_courses(args.append_courses)
+    else:
+        rebuild()
 
 
 if __name__ == "__main__":

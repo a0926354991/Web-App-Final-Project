@@ -93,6 +93,11 @@ python backend/scripts/ingest_csv.py
 > → `regex_structure_reviews.py` 或 `llm_structure_reviews.py`。
 > LLM 路徑需要 `ANTHROPIC_API_KEY` 環境變數。
 
+> 想補爬其他學期 (e.g. 114-1)？
+> 1. `python backend/Web-crawler.py --semester 114-1` → 產出 `ntu_detailed_data_114-1.csv`
+> 2. `python backend/scripts/ingest_csv.py --append-courses backend/data/ntu_detailed_data_114-1.csv`
+>    → INSERT OR IGNORE 進現有 courses 表(serial_no 重複會跳過)
+
 > 想升級 ability 推薦?跑 `python backend/llm_ability_tags.py` 把 5249 個 course_code
 > 跑 Claude Batch API 各標 5 軸能力(0-100),完成後 `python backend/scripts/ingest_ability_tags.py`
 > 把結果灌進 `course_ability` 表;`init_indices` 會自動偵測,有資料就用 LLM 標的,否則 fallback 關鍵字 mapping。
