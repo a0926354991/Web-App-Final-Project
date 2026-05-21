@@ -79,6 +79,9 @@ sidebarItems.forEach(item => {
         if (target === 'fit') {
             renderFitAnalysisView();
         }
+        if (target === 'schedule') {
+            renderScheduleView();
+        }
 
         if (window.innerWidth <= 992) {
             document.getElementById('sidebar').classList.remove('mobile-open');
@@ -398,7 +401,37 @@ async function openCompareModal() {
     }
 }
 
+function detectCompareConflict(courses) {
+    // 找出兩兩 courses 之間共用的 slots
+    const conflicts = [];
+    for (let i = 0; i < courses.length; i++) {
+        for (let j = i+1; j < courses.length; j++) {
+            const a = new Set((courses[i].slots || []).map(s => s.join('-')));
+            const overlap = (courses[j].slots || []).filter(s => a.has(s.join('-')));
+            if (overlap.length > 0) {
+                conflicts.push({
+                    a: courses[i].course_name,
+                    b: courses[j].course_name,
+                    slots: overlap.map(([wd, p]) => `週${WEEKDAY_LABELS[wd-1]}${p}`),
+                });
+            }
+        }
+    }
+    return conflicts;
+}
+
 function renderCompareTable(courses, fits) {
+    const conflicts = detectCompareConflict(courses);
+    const conflictBanner = conflicts.length === 0 ? '' : `
+        <div class="schedule-conflict-banner" style="margin-bottom: 14px">
+            <i class="fas fa-exclamation-triangle"></i>
+            <div>
+                <strong>衝堂警告:</strong>
+                ${conflicts.map(c => `${escapeHtml(c.a)} ↔ ${escapeHtml(c.b)} (${c.slots.join(', ')})`).join('; ')}
+            </div>
+        </div>
+    `;
+
     const cols = courses.map(c => `
         <th class="course-header course-col">
             <span class="compare-course-name">${escapeHtml(c.course_name)}</span>
@@ -447,6 +480,7 @@ function renderCompareTable(courses, fits) {
     ` : '';
 
     return `
+        ${conflictBanner}
         <table class="compare-table">
             <thead>
                 <tr><th class="label-col"></th>${cols}</tr>
@@ -457,7 +491,11 @@ function renderCompareTable(courses, fits) {
                 ${row('學分', c => escapeHtml(c.credits) || '—')}
                 ${row('必選修', c => escapeHtml(c.req_type) || '—')}
                 ${row('授課語言', c => escapeHtml(c.language) || '—')}
-                ${row('上課時間', c => escapeHtml(c.schedule_time) || '—')}
+                ${row('上課時段', c => {
+                    const slots = c.slots || [];
+                    if (!slots.length) return escapeHtml(c.schedule_time) || '—';
+                    return slots.map(([wd, p]) => `週${WEEKDAY_LABELS[wd-1]}${p}`).join(', ');
+                })}
                 ${row('上課地點', c => escapeHtml(c.location) || '—')}
                 ${fitTotal}
                 ${fitRow('PTT 推薦', 'recommendation')}
@@ -623,10 +661,11 @@ function renderDrawerContent(d, reviews) {
         `).join('');
 
     const inHist = historyState.serialSet.has(d.serial_no);
-    const addBtn = getToken() ? `
+    const histBtn = getToken() ? `
         <button class="drawer-add-history-btn ${inHist ? 'in-history' : ''}" id="drawer-add-history-btn" ${inHist ? 'disabled' : ''}>
             ${inHist ? '<i class="fas fa-check"></i> 已在修課歷史中' : '<i class="fas fa-plus"></i> 加入修課歷史'}
         </button>` : '';
+    const addBtn = scheduleToggleBtn(d) + histBtn;
 
     return `
         <div class="drawer-section">
@@ -1219,7 +1258,9 @@ async function loadDashboardRecommendations() {
                   你還沒填個人偏好,推薦是預設的 —
                   <a href="#" data-goto="userinfo">填一下偏好</a>會更準
                </div>` : '';
-        listEl.innerHTML = banner + items.map(it => `
+        listEl.innerHTML = banner + items.map(it => {
+            const has = inSchedule(it.serial_no);
+            return `
             <div class="course-card" data-serial="${escapeAttr(it.serial_no)}">
                 <div class="course-card-tag fit-tag">適合度 ${it.fit.total.toFixed(0)}%${lowSampleBadge(it.fit.n_reviews)}</div>
                 <div class="course-card-subtags">
@@ -1235,10 +1276,16 @@ async function loadDashboardRecommendations() {
                     <span><i class="fas fa-clock"></i> ${escapeHtml(it.credits)} 學分</span>
                 </div>
                 ${it.fit.explanation ? `<div class="fit-explanation">${escapeHtml(it.fit.explanation)}</div>` : ''}
-            </div>
-        `).join('');
+                <button class="btn-toggle-schedule ${has ? 'in-schedule' : ''}" data-schedule-toggle="${escapeAttr(it.serial_no)}" style="margin-top:10px">
+                    ${has ? '<i class="fas fa-check"></i> 已在課表' : '<i class="fas fa-calendar-plus"></i> 加入課表'}
+                </button>
+            </div>`;
+        }).join('');
         listEl.querySelectorAll('.course-card').forEach(card => {
-            card.addEventListener('click', () => openDrawer(card.dataset.serial));
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('[data-schedule-toggle]')) return;
+                openDrawer(card.dataset.serial);
+            });
         });
     } catch (err) {
         console.warn('loadDashboardRecommendations failed', err);
@@ -1389,12 +1436,195 @@ async function renderFitAnalysisView() {
             </div>
         `).join('');
         listEl.querySelectorAll('.fit-list-item').forEach(el => {
-            el.addEventListener('click', () => openDrawer(el.dataset.serial));
+            el.addEventListener('click', (e) => {
+                if (e.target.closest('[data-schedule-toggle]')) return;
+                openDrawer(el.dataset.serial);
+            });
         });
     } catch (err) {
         console.error(err);
         listEl.innerHTML = '<p style="color:#df3d31">載入失敗</p>';
     }
+}
+
+// ==========================================================================
+// 我的課表 (My Schedule) — localStorage 持久化
+// ==========================================================================
+const SCHEDULE_KEY = 'ntu_app_schedule';
+
+// 結構:{ serial_no: { course_name, teacher, slots: [[weekday, period], ...] } }
+function getSchedule() {
+    try { return JSON.parse(localStorage.getItem(SCHEDULE_KEY) || '{}'); }
+    catch (e) { return {}; }
+}
+function saveSchedule(s) {
+    localStorage.setItem(SCHEDULE_KEY, JSON.stringify(s));
+}
+function inSchedule(serial) {
+    return serial in getSchedule();
+}
+function addToSchedule(course) {
+    const s = getSchedule();
+    s[course.serial_no] = {
+        course_name: course.course_name,
+        teacher: course.teacher,
+        course_code: course.course_code,
+        slots: course.slots || [],
+    };
+    saveSchedule(s);
+}
+function removeFromSchedule(serial) {
+    const s = getSchedule();
+    delete s[serial];
+    saveSchedule(s);
+}
+
+// === Schedule grid 視圖 ===
+const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+const PERIOD_ORDER = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'A', 'B', 'C', 'D'];
+
+function renderScheduleView() {
+    const sched = getSchedule();
+    const serials = Object.keys(sched);
+    const summaryEl = document.getElementById('schedule-summary');
+    const conflictEl = document.getElementById('schedule-conflicts');
+    const gridEl = document.getElementById('schedule-grid');
+    const listCard = document.getElementById('schedule-list-card');
+    const listEl = document.getElementById('schedule-course-list');
+
+    summaryEl.textContent = serials.length === 0
+        ? '尚未加入任何課程 — 到課程探索/推薦頁點「加入課表」'
+        : `已加入 ${serials.length} 門課`;
+
+    // 計算每個 (weekday, period) 上有哪些課
+    const cellMap = {};
+    serials.forEach(serial => {
+        const c = sched[serial];
+        (c.slots || []).forEach(([wd, p]) => {
+            const key = `${wd}-${p}`;
+            (cellMap[key] = cellMap[key] || []).push({ serial, ...c });
+        });
+    });
+
+    // 衝堂偵測
+    const conflictKeys = Object.entries(cellMap).filter(([_, list]) => list.length > 1);
+    if (conflictKeys.length > 0) {
+        conflictEl.hidden = false;
+        const msgs = conflictKeys.map(([key, list]) => {
+            const [wd, p] = key.split('-');
+            const names = list.map(c => c.course_name).join(' / ');
+            return `週${WEEKDAY_LABELS[wd-1]} 第${p}節:${names}`;
+        });
+        conflictEl.innerHTML = `<i class="fas fa-exclamation-triangle"></i> 衝堂:` + msgs.join('; ');
+    } else {
+        conflictEl.hidden = true;
+    }
+
+    // 畫 grid: header + 14 rows × 7 days
+    const cells = ['<div class="header"></div>'];
+    for (let wd = 1; wd <= 7; wd++) {
+        cells.push(`<div class="header">週${WEEKDAY_LABELS[wd-1]}</div>`);
+    }
+    PERIOD_ORDER.forEach(p => {
+        cells.push(`<div class="period-label">${p}</div>`);
+        for (let wd = 1; wd <= 7; wd++) {
+            const list = cellMap[`${wd}-${p}`] || [];
+            const conflict = list.length > 1 ? ' conflict' : '';
+            const inner = list.map(c => `
+                <div class="cell-course" data-serial="${escapeAttr(c.serial)}" title="${escapeAttr(c.teacher)}">
+                    ${escapeHtml(c.course_name)}
+                </div>
+            `).join('');
+            cells.push(`<div class="cell${conflict}">${inner}</div>`);
+        }
+    });
+    gridEl.innerHTML = cells.join('');
+
+    // 列表
+    if (serials.length > 0) {
+        listCard.hidden = false;
+        listEl.innerHTML = serials.map(s => {
+            const c = sched[s];
+            const slotText = (c.slots && c.slots.length)
+                ? c.slots.map(([wd, p]) => `週${WEEKDAY_LABELS[wd-1]}${p}`).join(', ')
+                : '無排定時段';
+            return `
+                <div class="schedule-course-item" data-serial="${escapeAttr(s)}">
+                    <div>
+                        <div><strong>${escapeHtml(c.course_name)}</strong> <span style="color:#888">${escapeHtml(c.course_code || '')}</span></div>
+                        <div class="meta">${escapeHtml(c.teacher || '')} · ${slotText}</div>
+                    </div>
+                    <button class="btn-remove-schedule" data-serial="${escapeAttr(s)}" title="移除"><i class="fas fa-trash"></i></button>
+                </div>
+            `;
+        }).join('');
+    } else {
+        listCard.hidden = true;
+    }
+
+    // 綁定 click
+    gridEl.querySelectorAll('.cell-course').forEach(el => {
+        el.addEventListener('click', () => openDrawer(el.dataset.serial));
+    });
+    listEl.querySelectorAll('.schedule-course-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-remove-schedule')) return;
+            openDrawer(el.dataset.serial);
+        });
+    });
+    listEl.querySelectorAll('.btn-remove-schedule').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeFromSchedule(btn.dataset.serial);
+            renderScheduleView();
+            refreshScheduleButtons();
+        });
+    });
+}
+
+document.getElementById('schedule-clear').addEventListener('click', () => {
+    if (!confirm('確定清空課表?')) return;
+    localStorage.removeItem(SCHEDULE_KEY);
+    renderScheduleView();
+    refreshScheduleButtons();
+});
+
+// === 在抽屜 / compare modal / cards 加「加入課表」按鈕 ===
+function scheduleToggleBtn(course) {
+    const has = inSchedule(course.serial_no);
+    return `<button class="btn-toggle-schedule ${has ? 'in-schedule' : ''}" data-schedule-toggle="${escapeAttr(course.serial_no)}">
+        ${has ? '<i class="fas fa-check"></i> 已在課表' : '<i class="fas fa-calendar-plus"></i> 加入課表'}
+    </button>`;
+}
+
+// 事件委派
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-schedule-toggle]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const serial = btn.dataset.scheduleToggle;
+    if (inSchedule(serial)) {
+        removeFromSchedule(serial);
+    } else {
+        // 需要 course detail 才知道 slots
+        try {
+            const c = await fetch(`${API_BASE}/courses/${encodeURIComponent(serial)}`).then(r => r.json());
+            addToSchedule(c);
+        } catch (err) {
+            alert('載入課程資料失敗');
+            return;
+        }
+    }
+    refreshScheduleButtons();
+});
+
+function refreshScheduleButtons() {
+    document.querySelectorAll('[data-schedule-toggle]').forEach(btn => {
+        const has = inSchedule(btn.dataset.scheduleToggle);
+        btn.classList.toggle('in-schedule', has);
+        btn.innerHTML = has ? '<i class="fas fa-check"></i> 已在課表' : '<i class="fas fa-calendar-plus"></i> 加入課表';
+    });
 }
 
 // ==========================================================================

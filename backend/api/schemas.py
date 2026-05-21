@@ -14,6 +14,7 @@ class CourseSummary(BaseModel):
     credits: str
     schedule_time: str
     language: str
+    slots: list[list] = []  # parsed schedule: [[weekday_int, "period_str"], ...]
 
 
 class CourseDetail(CourseSummary):

@@ -1018,6 +1018,197 @@
         }
 
         /* =========================================
+           我的課表 (Schedule)
+           ========================================= */
+
+        .schedule-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .schedule-conflict-banner {
+            background: #fde4e2;
+            border: 1px solid #df3d31;
+            color: #c62828;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 0.88rem;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .schedule-card {
+            padding: 16px;
+            overflow-x: auto;
+        }
+
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: 50px repeat(7, 1fr);
+            gap: 4px;
+            min-width: 700px;
+        }
+
+        .schedule-grid .header {
+            font-size: 0.8rem;
+            color: #888;
+            text-align: center;
+            padding: 8px 4px;
+            font-weight: 600;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .schedule-grid .period-label {
+            background: #f8f9fa;
+            color: #888;
+            font-size: 0.78rem;
+            text-align: center;
+            padding: 4px;
+            border-radius: 4px;
+            align-self: center;
+            font-weight: 600;
+        }
+
+        .schedule-grid .cell {
+            min-height: 46px;
+            border: 1px dashed #e0e0e0;
+            border-radius: 4px;
+            padding: 4px;
+            font-size: 0.72rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .schedule-grid .cell-course {
+            background: #e3f2fd;
+            border-left: 3px solid var(--active-blue);
+            padding: 4px 6px;
+            border-radius: 3px;
+            color: #1565c0;
+            cursor: pointer;
+            line-height: 1.3;
+            font-weight: 500;
+        }
+
+        .schedule-grid .cell-course:hover {
+            background: #bbdefb;
+        }
+
+        .schedule-grid .cell.conflict {
+            background: #fde4e2;
+            border-color: #df3d31;
+            border-style: solid;
+        }
+
+        .schedule-grid .cell.conflict .cell-course {
+            background: #ffcdd2;
+            border-left-color: #c62828;
+            color: #b71c1c;
+        }
+
+        .btn-toggle-schedule {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border: 1px solid #ddd;
+            background: white;
+            color: #555;
+            margin-top: 8px;
+            margin-right: 6px;
+            transition: all 0.15s;
+        }
+
+        .btn-toggle-schedule:hover {
+            border-color: var(--active-blue);
+            color: var(--active-blue);
+        }
+
+        .btn-toggle-schedule.in-schedule {
+            background: #e8f5e9;
+            border-color: #4CAF50;
+            color: #2e7d32;
+        }
+
+        /* schedule course list 內的卡片 */
+        .schedule-course-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border: 1px solid #eaeaea;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .schedule-course-item:hover {
+            border-color: var(--active-blue);
+            background: #f8fbff;
+        }
+
+        .schedule-course-item .meta {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 3px;
+        }
+
+        .schedule-course-item .btn-remove-schedule {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .schedule-course-item .btn-remove-schedule:hover {
+            color: var(--btn-red);
+            background: #fde4e2;
+        }
+
+        /* dark mode 對應 */
+        body.theme-dark .schedule-grid .header,
+        body.theme-dark .schedule-grid .period-label {
+            background: #1f2229;
+            color: #999;
+        }
+
+        body.theme-dark .schedule-grid .cell {
+            border-color: #353a45;
+        }
+
+        body.theme-dark .schedule-grid .cell-course {
+            background: #1c3147;
+            color: #90caf9;
+        }
+
+        body.theme-dark .schedule-grid .cell.conflict {
+            background: #3a1818;
+            border-color: #c62828;
+        }
+
+        body.theme-dark .schedule-grid .cell.conflict .cell-course {
+            background: #5a1c1c;
+            color: #ef9a9a;
+        }
+
+        body.theme-dark .schedule-course-item {
+            background: #1f2229;
+            border-color: #353a45;
+        }
+
+        /* =========================================
            Dark mode toggle button
            ========================================= */
 

@@ -70,6 +70,13 @@
                             <span class="en">Course Discovery</span>
                         </div>
                     </a>
+                    <a href="#" class="sidebar-item" data-target="schedule">
+                        <i class="fas fa-calendar-week"></i>
+                        <div class="sidebar-item-text">
+                            <span class="zh">我的課表</span>
+                            <span class="en">My Schedule</span>
+                        </div>
+                    </a>
                     <a href="#" class="sidebar-item" data-target="fit">
                         <i class="fas fa-chart-line"></i>
                         <div class="sidebar-item-text">
@@ -223,6 +230,27 @@
                             </span>
                         </div>
                     </form>
+                </section>
+
+                <!-- ===== View: 我的課表 ===== -->
+                <section class="view" id="view-schedule" hidden>
+                    <div class="dashboard-header">
+                        <h1 class="dashboard-title">我的課表 <span class="dashboard-subtitle">My Schedule</span></h1>
+                    </div>
+                    <div class="schedule-toolbar">
+                        <span id="schedule-summary" class="results-meta">尚未加入任何課程</span>
+                        <button class="btn-ghost" id="schedule-clear">清空</button>
+                    </div>
+                    <div id="schedule-conflicts" class="schedule-conflict-banner" hidden></div>
+                    <div class="card schedule-card">
+                        <div id="schedule-grid" class="schedule-grid"></div>
+                    </div>
+                    <div class="card" style="margin-top:18px" id="schedule-list-card" hidden>
+                        <div class="card-header">
+                            <h2 class="card-title">課表內的課 <span class="en">Courses</span></h2>
+                        </div>
+                        <div id="schedule-course-list"></div>
+                    </div>
                 </section>
 
                 <!-- ===== View: 修課歷史 ===== -->

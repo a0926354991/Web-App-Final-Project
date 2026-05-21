@@ -31,6 +31,7 @@ from .recommendations import (
     init_indices,
     profile_row_to_dict,
 )
+from .schedule import parse_schedule
 from .schemas import (
     AuthResponse,
     CourseDetail,
@@ -129,11 +130,16 @@ def list_courses(
         [*params, limit, offset],
     ).fetchall()
 
+    def _to_summary(r: sqlite3.Row) -> CourseSummary:
+        d = dict(r)
+        d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
+        return CourseSummary(**d)
+
     return CourseListResponse(
         total=total,
         limit=limit,
         offset=offset,
-        items=[CourseSummary(**dict(r)) for r in rows],
+        items=[_to_summary(r) for r in rows],
     )
 
 
@@ -147,7 +153,9 @@ def get_course(
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"course {serial_no} not found")
-    return CourseDetail(**dict(row))
+    d = dict(row)
+    d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
+    return CourseDetail(**d)
 
 
 @app.get("/courses/{serial_no}/reviews", response_model=ReviewListResponse)
