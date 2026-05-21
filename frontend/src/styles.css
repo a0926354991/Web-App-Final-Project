@@ -1017,6 +1017,28 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* 推薦理由說明文 (出現在推薦卡片底部 + 適合度分析列表底部) */
+        .fit-explanation {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed #ddd;
+            font-size: 0.78rem;
+            color: #555;
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        /* 抽屜 fit box 內的 why 一句話 */
+        .drawer-fit-why {
+            font-size: 0.88rem;
+            color: #1565c0;
+            margin: 4px 0 10px 0;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 4px;
+            line-height: 1.5;
+        }
+
         /* 抽屜內的 fit 分數區塊 */
         .drawer-fit-box {
             background: linear-gradient(135deg, #e3f2fd, #fff);

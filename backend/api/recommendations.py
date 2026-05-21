@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import math
+import re
 import sqlite3
 from typing import Any
 
@@ -55,6 +56,13 @@ INTEREST_TF_WEIGHT_OV = 1  # 含 grading
 _CACHE: dict[str, Any] = {}
 
 
+def _compile_tag_pattern(tag: str) -> re.Pattern:
+    """ASCII tag (例如 'AI') 用 word boundary 避免 'main','again' 誤命中。中文 tag 用單純 substring。"""
+    if tag.isascii():
+        return re.compile(rf"\b{re.escape(tag)}\b", re.IGNORECASE)
+    return re.compile(re.escape(tag))
+
+
 # =========================================================================
 # 啟動時建索引 (跑一次,~50ms for 8467 courses)
 # =========================================================================
@@ -72,6 +80,13 @@ def init_indices(conn: sqlite3.Connection) -> None:
         """
     ).fetchall()
 
+    # 每個 interest tag 預先 compile pattern (ASCII 用 \b\b, 中文用 substring)
+    tag_patterns = {tag: _compile_tag_pattern(tag) for tag in INTEREST_TAGS_ALL}
+    ability_kw_patterns = {
+        ability: [_compile_tag_pattern(kw) for kw in keywords]
+        for ability, keywords in ABILITY_KEYWORDS.items()
+    }
+
     text_index: dict[str, dict[str, str]] = {}
     ability_profile: dict[str, set[str]] = {}
 
@@ -82,36 +97,36 @@ def init_indices(conn: sqlite3.Connection) -> None:
         ov = (r["overview"] or "") + " " + (r["grading"] or "")
 
         text_index[r["serial_no"]] = {
-            "name": name.lower(),
-            "dept": dept.lower(),
-            "obj": obj.lower(),
-            "ov": ov.lower(),
+            "name": name,
+            "dept": dept,
+            "obj": obj,
+            "ov": ov,
         }
 
-        full_lower = (name + " " + dept + " " + obj + " " + ov).lower()
+        full = name + " " + dept + " " + obj + " " + ov
         prof: set[str] = set()
-        for ability, keywords in ABILITY_KEYWORDS.items():
-            if any(kw.lower() in full_lower for kw in keywords):
+        for ability, patterns in ability_kw_patterns.items():
+            if any(p.search(full) for p in patterns):
                 prof.add(ability)
         ability_profile[r["serial_no"]] = prof
 
     # IDF: 在幾門課裡至少出現一次 → log(N / df)
     n_total = len(text_index)
     idf: dict[str, float] = {}
-    for tag in INTEREST_TAGS_ALL:
-        tag_lower = tag.lower()
+    for tag, pat in tag_patterns.items():
         df = sum(
             1 for parts in text_index.values()
-            if (tag_lower in parts["name"]
-                or tag_lower in parts["dept"]
-                or tag_lower in parts["obj"]
-                or tag_lower in parts["ov"])
+            if (pat.search(parts["name"])
+                or pat.search(parts["dept"])
+                or pat.search(parts["obj"])
+                or pat.search(parts["ov"]))
         )
         idf[tag] = math.log(n_total / max(df, 1))
 
     _CACHE["text_index"] = text_index
     _CACHE["ability_profile"] = ability_profile
     _CACHE["idf"] = idf
+    _CACHE["tag_patterns"] = tag_patterns
     _CACHE["ready"] = True
 
 
@@ -120,39 +135,46 @@ def init_indices(conn: sqlite3.Connection) -> None:
 # =========================================================================
 
 
-def compute_interest_score(profile: dict[str, Any], serial_no: str) -> float:
-    """TF-IDF based: 興趣 tag 在課程文字中的加權命中度。"""
+def compute_interest_score(
+    profile: dict[str, Any], serial_no: str
+) -> tuple[float, list[str]]:
+    """TF-IDF based。回傳 (score, matched_tags) — matched 是有命中過的 tag。"""
     interests = profile.get("interests") or []
     if not interests:
-        return 50.0  # 沒填興趣 → 中性
+        return 50.0, []
 
     parts = _CACHE["text_index"].get(serial_no)
     if not parts:
-        return 50.0
+        return 50.0, []
 
     idf = _CACHE["idf"]
+    patterns = _CACHE["tag_patterns"]
     score = 0.0
+    matched: list[str] = []
     for tag in interests:
-        if tag not in idf:
+        pat = patterns.get(tag)
+        if pat is None:
             continue
-        t = tag.lower()
         tf = (
-            parts["name"].count(t) * INTEREST_TF_WEIGHT_NAME
-            + parts["dept"].count(t) * INTEREST_TF_WEIGHT_DEPT
-            + parts["obj"].count(t) * INTEREST_TF_WEIGHT_OBJ
-            + parts["ov"].count(t) * INTEREST_TF_WEIGHT_OV
+            len(pat.findall(parts["name"])) * INTEREST_TF_WEIGHT_NAME
+            + len(pat.findall(parts["dept"])) * INTEREST_TF_WEIGHT_DEPT
+            + len(pat.findall(parts["obj"])) * INTEREST_TF_WEIGHT_OBJ
+            + len(pat.findall(parts["ov"])) * INTEREST_TF_WEIGHT_OV
         )
+        if tf > 0:
+            matched.append(tag)
         score += tf * idf[tag]
 
-    # 正規化:依經驗 score 落在 0-15 之間,放大成 0-100 並 clamp
-    return min(100.0, score * 10.0)
+    return min(100.0, score * 10.0), matched
 
 
-def compute_ability_score(profile: dict[str, Any], serial_no: str) -> float:
-    """課程關鍵字命中哪些 ability → 取使用者那幾項的平均值。沒命中 → 中性 50。"""
+def compute_ability_score(
+    profile: dict[str, Any], serial_no: str
+) -> tuple[float, list[str]]:
+    """回傳 (score, required_abilities)。required 是該課的關鍵字命中項。"""
     required = _CACHE["ability_profile"].get(serial_no, set())
     if not required:
-        return 50.0
+        return 50.0, []
 
     user_vals = {
         "logic":      profile["ability_logic"],
@@ -161,7 +183,75 @@ def compute_ability_score(profile: dict[str, Any], serial_no: str) -> float:
         "humanities": profile["ability_humanities"],
         "teamwork":   profile["ability_teamwork"],
     }
-    return sum(user_vals[a] for a in required) / len(required)
+    score = sum(user_vals[a] for a in required) / len(required)
+    return score, sorted(required)
+
+
+# =========================================================================
+# 為什麼推薦這門課 — template 文字
+# =========================================================================
+
+_ABILITY_LABEL_ZH = {
+    "logic": "數理邏輯",
+    "writing": "文字表達",
+    "coding": "程式實作",
+    "humanities": "人文素養",
+    "teamwork": "團隊協作",
+}
+
+
+def compute_explanation(
+    profile: dict[str, Any],
+    fit: dict[str, Any],
+    matched_interests: list[str],
+    required_abilities: list[str],
+) -> str:
+    """根據 fit 各成份的高低,生出一句中文說明。"""
+    highlights: list[str] = []
+
+    if fit["recommendation"] >= 80 and fit["n_reviews"] > 0:
+        highlights.append(f"PTT 推薦度高({fit['recommendation']:.0f}/100,{fit['n_reviews']} 篇評價)")
+    elif fit["recommendation"] >= 60 and fit["n_reviews"] >= 2:
+        highlights.append("PTT 評價不錯")
+
+    if matched_interests:
+        names = "、".join(f"『{t}』" for t in matched_interests[:3])
+        highlights.append(f"命中你的{names}興趣")
+
+    if fit["ability"] >= 75 and required_abilities:
+        if len(required_abilities) == 1:
+            zh = _ABILITY_LABEL_ZH.get(required_abilities[0], required_abilities[0])
+            highlights.append(f"需要的{zh}能力是你的強項")
+        else:
+            highlights.append("需要的能力跟你的長處對得上")
+
+    if fit["sweetness"] >= 80 and fit["n_reviews"] > 0:
+        highlights.append("給分甜度跟你偏好相近")
+
+    if fit["loading"] >= 80 and fit["n_reviews"] > 0:
+        highlights.append("loading 跟你偏好相近")
+
+    if not highlights:
+        highlights.append("各項分數平均,可考慮看看")
+
+    caveats: list[str] = []
+    if fit["sweetness"] < 40 and fit["n_reviews"] > 0:
+        caveats.append("給分可能不甜")
+    if fit["loading"] < 40 and fit["n_reviews"] > 0:
+        caveats.append("loading 比你偏好的重")
+    if fit["ability"] < 40 and required_abilities:
+        weak = [
+            _ABILITY_LABEL_ZH.get(a, a)
+            for a in required_abilities
+            if profile.get(f"ability_{a}", 50) < 50
+        ]
+        if weak:
+            caveats.append(f"需要的{weak[0]}你目前較弱")
+
+    text = "、".join(highlights[:3])
+    if caveats:
+        text += ";但" + "、".join(caveats[:2])
+    return text
 
 
 # =========================================================================
@@ -219,8 +309,8 @@ def compute_fit(
     else:
         load_score = 50.0
 
-    interest_score = compute_interest_score(profile, serial_no)
-    ability_score = compute_ability_score(profile, serial_no)
+    interest_score, matched_interests = compute_interest_score(profile, serial_no)
+    ability_score, required_abilities = compute_ability_score(profile, serial_no)
 
     total = (
         WEIGHT_REC * rec_score
@@ -230,7 +320,7 @@ def compute_fit(
         + WEIGHT_ABILITY * ability_score
     )
 
-    return {
+    fit = {
         "total": round(total, 1),
         "recommendation": round(rec_score, 1),
         "sweetness": round(sweet_score, 1),
@@ -239,6 +329,10 @@ def compute_fit(
         "ability": round(ability_score, 1),
         "n_reviews": (stats or {}).get("n_reviews", 0),
     }
+    fit["matched_interests"] = matched_interests
+    fit["required_abilities"] = required_abilities
+    fit["explanation"] = compute_explanation(profile, fit, matched_interests, required_abilities)
+    return fit
 
 
 def profile_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:

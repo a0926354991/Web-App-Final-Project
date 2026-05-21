@@ -101,6 +101,9 @@ class FitBreakdown(BaseModel):
     interest: float
     ability: float
     n_reviews: int
+    matched_interests: list[str] = []
+    required_abilities: list[str] = []
+    explanation: str = ""
 
 
 class RecommendationItem(BaseModel):

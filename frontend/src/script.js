@@ -957,6 +957,7 @@ async function loadDashboardRecommendations() {
                     <span><i class="fas fa-user"></i> ${escapeHtml(it.teacher)}</span>
                     <span><i class="fas fa-clock"></i> ${escapeHtml(it.credits)} 學分</span>
                 </div>
+                ${it.fit.explanation ? `<div class="fit-explanation">${escapeHtml(it.fit.explanation)}</div>` : ''}
             </div>
         `).join('');
         listEl.querySelectorAll('.course-card').forEach(card => {
@@ -1031,6 +1032,7 @@ function renderFitBox(fit) {
     return `
         <div class="drawer-fit-box">
             <div class="drawer-fit-total">適合度 ${fit.total.toFixed(0)}%</div>
+            ${fit.explanation ? `<div class="drawer-fit-why">${escapeHtml(fit.explanation)}</div>` : ''}
             <div class="drawer-fit-breakdown">
                 <span><strong>PTT 推薦</strong>${fit.recommendation.toFixed(0)}</span>
                 <span><strong>甜度匹配</strong>${fit.sweetness.toFixed(0)}</span>
@@ -1092,6 +1094,7 @@ async function renderFitAnalysisView() {
                         <span class="fit-bar-pill">興趣 <strong>${it.fit.interest.toFixed(0)}</strong></span>
                         <span class="fit-bar-pill">能力 <strong>${it.fit.ability.toFixed(0)}</strong></span>
                     </div>
+                    ${it.fit.explanation ? `<div class="fit-explanation">${escapeHtml(it.fit.explanation)}</div>` : ''}
                 </div>
                 <div class="fit-total-big">${it.fit.total.toFixed(0)}<span style="font-size:0.7em;color:#888">/100</span></div>
             </div>
