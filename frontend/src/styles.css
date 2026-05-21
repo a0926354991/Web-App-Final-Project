@@ -1,3 +1,8 @@
+        /* 讓 HTML `hidden` 屬性能蓋過 display:flex 等規則 */
+        [hidden] {
+            display: none !important;
+        }
+
         :root {
             /* 顏色變量 */
             --ntu-red: #9E1B32;
@@ -781,6 +786,117 @@
             text-align: center;
             color: #888;
             padding: 30px;
+        }
+
+        /* =========================================
+           Auth Modal (登入 / 註冊)
+           ========================================= */
+
+        .auth-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 300;
+            padding: 20px;
+        }
+
+        .auth-modal {
+            background: white;
+            border-radius: 12px;
+            padding: 32px 28px 24px;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            position: relative;
+        }
+
+        .auth-modal h2 {
+            margin: 0 0 20px 0;
+            color: var(--ntu-red);
+            font-size: 1.3rem;
+            text-align: center;
+        }
+
+        .auth-modal-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            color: #888;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .auth-modal-close:hover {
+            background: #f0f0f0;
+        }
+
+        .auth-field {
+            display: block;
+            margin-bottom: 14px;
+        }
+
+        .auth-field span {
+            display: block;
+            font-size: 0.85rem;
+            color: #555;
+            margin-bottom: 6px;
+        }
+
+        .auth-field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        .auth-field input:focus {
+            outline: none;
+            border-color: var(--active-blue);
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.15);
+        }
+
+        .auth-error {
+            color: var(--btn-red);
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+            padding: 8px 10px;
+            background: #fde4e2;
+            border-radius: 4px;
+        }
+
+        .auth-submit {
+            width: 100%;
+            justify-content: center;
+            margin-top: 4px;
+        }
+
+        .auth-switch {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .auth-switch a {
+            color: var(--active-blue);
+            text-decoration: none;
+            margin-left: 4px;
+            font-weight: bold;
+        }
+
+        .auth-switch a:hover {
+            text-decoration: underline;
         }
 
         /* =========================================

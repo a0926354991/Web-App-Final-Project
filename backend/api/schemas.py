@@ -61,3 +61,30 @@ class ReviewListResponse(BaseModel):
     course_code: str
     total: int
     items: list[StructuredReview]
+
+
+# ---- Auth ----
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: "UserInfo"
+
+
+class UserInfo(BaseModel):
+    id: int
+    username: str
+    created_at: str
+
+
+AuthResponse.model_rebuild()

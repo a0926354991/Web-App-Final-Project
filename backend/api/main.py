@@ -11,17 +11,30 @@ from __future__ import annotations
 
 import sqlite3
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+import sqlite3 as _sqlite3
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .db import get_conn
+from .auth import (
+    get_current_user,
+    hash_password,
+    init_auth_tables,
+    new_token,
+    verify_password,
+)
+from .db import DB_PATH, get_conn
 from .schemas import (
+    AuthResponse,
     CourseDetail,
     CourseListResponse,
     CourseSummary,
+    LoginRequest,
+    RegisterRequest,
     ReviewListResponse,
     StructuredReview,
+    UserInfo,
 )
 
 
@@ -35,6 +48,15 @@ app = FastAPI(
     version="0.1.0",
     default_response_class=UTF8JSONResponse,
 )
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    conn = _sqlite3.connect(DB_PATH)
+    try:
+        init_auth_tables(conn)
+    finally:
+        conn.close()
 
 # 前端目前是靜態檔，先全開 CORS 方便開發
 app.add_middleware(
@@ -152,3 +174,83 @@ def list_departments(
         """
     ).fetchall()
     return [r["department"] for r in rows]
+
+
+# =========================================================================
+# Auth
+# =========================================================================
+
+
+def _row_to_user_info(row: sqlite3.Row) -> UserInfo:
+    return UserInfo(id=row["id"], username=row["username"], created_at=row["created_at"])
+
+
+@app.post("/auth/register", response_model=AuthResponse, status_code=201)
+def register(
+    body: RegisterRequest,
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> AuthResponse:
+    username = body.username.strip()
+    if len(username) < 2:
+        raise HTTPException(400, "username 至少 2 個字元")
+    if len(body.password) < 6:
+        raise HTTPException(400, "password 至少 6 個字元")
+
+    exists = conn.execute(
+        "SELECT 1 FROM users WHERE username = ?", (username,)
+    ).fetchone()
+    if exists:
+        raise HTTPException(409, "username 已被使用")
+
+    pw_hash, salt = hash_password(body.password)
+    cur = conn.execute(
+        "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
+        (username, pw_hash, salt),
+    )
+    user_id = cur.lastrowid
+    token = new_token()
+    conn.execute(
+        "INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id)
+    )
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT id, username, created_at FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    return AuthResponse(token=token, user=_row_to_user_info(row))
+
+
+@app.post("/auth/login", response_model=AuthResponse)
+def login(
+    body: LoginRequest,
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> AuthResponse:
+    row = conn.execute(
+        "SELECT id, username, password_hash, salt, created_at FROM users WHERE username = ?",
+        (body.username.strip(),),
+    ).fetchone()
+    if row is None or not verify_password(body.password, row["password_hash"], row["salt"]):
+        raise HTTPException(401, "帳號或密碼錯誤")
+
+    token = new_token()
+    conn.execute(
+        "INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, row["id"])
+    )
+    conn.commit()
+    return AuthResponse(token=token, user=_row_to_user_info(row))
+
+
+@app.post("/auth/logout", status_code=204)
+def logout(
+    authorization: str = Header(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+    _current: sqlite3.Row = Depends(get_current_user),
+) -> None:
+    token = authorization.removeprefix("Bearer ").strip()
+    conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    conn.commit()
+
+
+@app.get("/auth/me", response_model=UserInfo)
+def me(current: sqlite3.Row = Depends(get_current_user)) -> UserInfo:
+    return _row_to_user_info(current)

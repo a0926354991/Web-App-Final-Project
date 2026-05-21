@@ -22,20 +22,20 @@
                 </div>
             </div>
             <div class="user-profile-header">
-                <img src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
-                <span>未登入，請先登入</span>
+                <img id="header-avatar" src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
+                <span id="header-username">未登入，請先登入</span>
             </div>
         </header>
 
         <div class="main-layout">
             <aside class="sidebar" id="sidebar">
                 <div class="sidebar-user">
-                    <img src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
-                    <span class="user-name">未登入</span>
-                    <span class="user-id">等待登入後顯示</span>
+                    <img id="sidebar-avatar" src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
+                    <span class="user-name" id="sidebar-username">未登入</span>
+                    <span class="user-id" id="sidebar-userid">等待登入後顯示</span>
                     <div class="status-container">
-                        <div class="status-dot waiting"></div>
-                        <span>等待登入 Waiting for login</span>
+                        <div class="status-dot waiting" id="sidebar-status-dot"></div>
+                        <span id="sidebar-status-text">等待登入 Waiting for login</span>
                     </div>
                 </div>
                 <nav class="sidebar-nav">
@@ -76,10 +76,10 @@
                     </a>
                 </nav>
                 <div class="account-section">
-                    <a href="#" class="account-btn account-btn-login">
+                    <a href="#" class="account-btn account-btn-login" id="btn-login">
                         <i class="fas fa-sign-in-alt"></i> 登入 Login
                     </a>
-                    <a href="#" class="account-btn account-btn-logout">
+                    <a href="#" class="account-btn account-btn-logout" id="btn-logout" hidden>
                         <i class="fas fa-sign-out-alt"></i> 登出 Logout
                     </a>
                 </div>
@@ -234,6 +234,30 @@
                     </div>
                 </section>
             </main>
+        </div>
+    </div>
+
+    <!-- ===== 登入 / 註冊 Modal ===== -->
+    <div class="auth-modal-overlay" id="auth-modal-overlay" hidden>
+        <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <button class="auth-modal-close" id="auth-modal-close" aria-label="關閉"><i class="fas fa-times"></i></button>
+            <h2 id="auth-title">登入 Login</h2>
+            <form id="auth-form" novalidate>
+                <label class="auth-field">
+                    <span>帳號 Username</span>
+                    <input type="text" id="auth-username" required autocomplete="username">
+                </label>
+                <label class="auth-field">
+                    <span>密碼 Password</span>
+                    <input type="password" id="auth-password" required autocomplete="current-password">
+                </label>
+                <div class="auth-error" id="auth-error" hidden></div>
+                <button type="submit" class="btn-primary auth-submit" id="auth-submit">登入</button>
+            </form>
+            <div class="auth-switch">
+                <span id="auth-switch-label">還沒有帳號？</span>
+                <a href="#" id="auth-switch-link">註冊</a>
+            </div>
         </div>
     </div>
 

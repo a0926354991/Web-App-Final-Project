@@ -3,6 +3,16 @@
 // ==========================================================================
 const API_BASE = 'http://localhost:8000';
 const PAGE_SIZE = 20;
+const TOKEN_KEY = 'ntu_app_token';
+
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+function authHeaders() {
+    const t = getToken();
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
+}
 
 // ==========================================================================
 // Sidebar 開關 (漢堡選單)
@@ -250,7 +260,10 @@ const drawerTitle = document.getElementById('drawer-title');
 document.getElementById('drawer-close').addEventListener('click', closeDrawer);
 drawerOverlay.addEventListener('click', closeDrawer);
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDrawer();
+    if (e.key === 'Escape') {
+        closeDrawer();
+        closeAuthModal();
+    }
 });
 
 function closeDrawer() {
@@ -338,6 +351,180 @@ function renderDrawerContent(d, reviews) {
         </div>` : ''}
     `;
 }
+
+// ==========================================================================
+// Auth：登入 / 註冊 modal + UI 狀態
+// ==========================================================================
+const authEls = {
+    overlay: document.getElementById('auth-modal-overlay'),
+    title: document.getElementById('auth-title'),
+    form: document.getElementById('auth-form'),
+    username: document.getElementById('auth-username'),
+    password: document.getElementById('auth-password'),
+    error: document.getElementById('auth-error'),
+    submit: document.getElementById('auth-submit'),
+    close: document.getElementById('auth-modal-close'),
+    switchLabel: document.getElementById('auth-switch-label'),
+    switchLink: document.getElementById('auth-switch-link'),
+    btnLogin: document.getElementById('btn-login'),
+    btnLogout: document.getElementById('btn-logout'),
+    headerAvatar: document.getElementById('header-avatar'),
+    headerUsername: document.getElementById('header-username'),
+    sidebarAvatar: document.getElementById('sidebar-avatar'),
+    sidebarUsername: document.getElementById('sidebar-username'),
+    sidebarUserid: document.getElementById('sidebar-userid'),
+    sidebarStatusDot: document.getElementById('sidebar-status-dot'),
+    sidebarStatusText: document.getElementById('sidebar-status-text'),
+};
+
+let authMode = 'login';  // 'login' | 'register'
+
+function openAuthModal(mode = 'login') {
+    authMode = mode;
+    renderAuthMode();
+    authEls.overlay.hidden = false;
+    authEls.username.value = '';
+    authEls.password.value = '';
+    authEls.error.hidden = true;
+    setTimeout(() => authEls.username.focus(), 50);
+}
+
+function closeAuthModal() {
+    authEls.overlay.hidden = true;
+}
+
+function renderAuthMode() {
+    if (authMode === 'login') {
+        authEls.title.textContent = '登入 Login';
+        authEls.submit.textContent = '登入';
+        authEls.switchLabel.textContent = '還沒有帳號？';
+        authEls.switchLink.textContent = '註冊';
+        authEls.password.autocomplete = 'current-password';
+    } else {
+        authEls.title.textContent = '註冊 Register';
+        authEls.submit.textContent = '建立帳號';
+        authEls.switchLabel.textContent = '已經有帳號？';
+        authEls.switchLink.textContent = '登入';
+        authEls.password.autocomplete = 'new-password';
+    }
+}
+
+function showAuthError(msg) {
+    authEls.error.textContent = msg;
+    authEls.error.hidden = false;
+}
+
+authEls.btnLogin.addEventListener('click', (e) => { e.preventDefault(); openAuthModal('login'); });
+authEls.btnLogout.addEventListener('click', (e) => { e.preventDefault(); doLogout(); });
+authEls.close.addEventListener('click', closeAuthModal);
+authEls.overlay.addEventListener('click', (e) => {
+    if (e.target === authEls.overlay) closeAuthModal();
+});
+authEls.switchLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    openAuthModal(authMode === 'login' ? 'register' : 'login');
+});
+
+authEls.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = authEls.username.value.trim();
+    const password = authEls.password.value;
+    if (!username || !password) {
+        showAuthError('請填寫帳號與密碼');
+        return;
+    }
+
+    authEls.submit.disabled = true;
+    authEls.error.hidden = true;
+    try {
+        const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+        const res = await fetch(`${API_BASE}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showAuthError(err.detail || `${res.status} 錯誤`);
+            return;
+        }
+        const data = await res.json();
+        setToken(data.token);
+        applyLoggedInUI(data.user);
+        closeAuthModal();
+    } catch (err) {
+        console.error(err);
+        showAuthError('連線失敗，請確認 API server 是否啟動');
+    } finally {
+        authEls.submit.disabled = false;
+    }
+});
+
+async function doLogout() {
+    const token = getToken();
+    if (token) {
+        try {
+            await fetch(`${API_BASE}/auth/logout`, {
+                method: 'POST',
+                headers: authHeaders(),
+            });
+        } catch (err) {
+            console.warn('logout request failed, clearing locally', err);
+        }
+    }
+    clearToken();
+    applyLoggedOutUI();
+}
+
+function applyLoggedInUI(user) {
+    const name = user.username;
+    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=002D62&color=ffffff`;
+    authEls.headerAvatar.src = avatarUrl;
+    authEls.headerUsername.textContent = `${name} 已登入`;
+    authEls.sidebarAvatar.src = avatarUrl;
+    authEls.sidebarUsername.textContent = name;
+    authEls.sidebarUserid.textContent = `ID: ${user.id}`;
+    authEls.sidebarStatusDot.className = 'status-dot online';
+    authEls.sidebarStatusText.textContent = '已登入 Online';
+    authEls.btnLogin.hidden = true;
+    authEls.btnLogout.hidden = false;
+}
+
+function applyLoggedOutUI() {
+    const avatarUrl = 'https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000';
+    authEls.headerAvatar.src = avatarUrl;
+    authEls.headerUsername.textContent = '未登入,請先登入';
+    authEls.sidebarAvatar.src = avatarUrl;
+    authEls.sidebarUsername.textContent = '未登入';
+    authEls.sidebarUserid.textContent = '等待登入後顯示';
+    authEls.sidebarStatusDot.className = 'status-dot waiting';
+    authEls.sidebarStatusText.textContent = '等待登入 Waiting for login';
+    authEls.btnLogin.hidden = false;
+    authEls.btnLogout.hidden = true;
+}
+
+async function bootstrapAuth() {
+    const token = getToken();
+    if (!token) {
+        applyLoggedOutUI();
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() });
+        if (res.ok) {
+            const user = await res.json();
+            applyLoggedInUI(user);
+        } else {
+            clearToken();
+            applyLoggedOutUI();
+        }
+    } catch (err) {
+        console.warn('auth bootstrap failed', err);
+        applyLoggedOutUI();
+    }
+}
+
+bootstrapAuth();
 
 // ==========================================================================
 // 小工具:防 XSS
