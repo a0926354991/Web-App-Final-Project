@@ -25,7 +25,12 @@ from .auth import (
     verify_password,
 )
 from .db import DB_PATH, get_conn
-from .recommendations import aggregate_course_stats, compute_fit, profile_row_to_dict
+from .recommendations import (
+    aggregate_course_stats,
+    compute_fit,
+    init_indices,
+    profile_row_to_dict,
+)
 from .schemas import (
     AuthResponse,
     CourseDetail,
@@ -59,8 +64,10 @@ app = FastAPI(
 @app.on_event("startup")
 def _startup() -> None:
     conn = _sqlite3.connect(DB_PATH)
+    conn.row_factory = _sqlite3.Row
     try:
         init_auth_tables(conn)
+        init_indices(conn)
     finally:
         conn.close()
 
@@ -392,7 +399,7 @@ def my_recommendations(
         code = r["course_code"]
         if code in taken_codes:
             continue
-        fit = compute_fit(profile, stats_map.get(code), r["course_name"], r["department"])
+        fit = compute_fit(profile, stats_map.get(code), r["serial_no"])
         scored.append((
             fit["total"],
             RecommendationItem(
@@ -438,7 +445,7 @@ def my_fit(
     ).fetchone()
     stats_dict = dict(stats) if stats and stats["n_reviews"] > 0 else None
 
-    fit = compute_fit(profile, stats_dict, course["course_name"], course["department"])
+    fit = compute_fit(profile, stats_dict, serial_no)
     return FitBreakdown(**fit)
 
 
@@ -454,7 +461,7 @@ def my_fits_batch(
     placeholders = ",".join("?" * len(serial_nos))
     rows = conn.execute(
         f"""
-        SELECT serial_no, course_code, course_name, department
+        SELECT serial_no, course_code
         FROM courses
         WHERE serial_no IN ({placeholders})
         """,
@@ -466,12 +473,7 @@ def my_fits_batch(
 
     out: dict[str, FitBreakdown] = {}
     for r in rows:
-        fit = compute_fit(
-            profile,
-            stats_map.get(r["course_code"]),
-            r["course_name"],
-            r["department"] or "",
-        )
+        fit = compute_fit(profile, stats_map.get(r["course_code"]), r["serial_no"])
         out[r["serial_no"]] = FitBreakdown(**fit)
     return out
 

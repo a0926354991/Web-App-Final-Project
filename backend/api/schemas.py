@@ -99,6 +99,7 @@ class FitBreakdown(BaseModel):
     sweetness: float
     loading: float
     interest: float
+    ability: float
     n_reviews: int
 
 

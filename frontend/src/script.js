@@ -949,7 +949,8 @@ async function loadDashboardRecommendations() {
                     <span class="tag">推薦 ${it.fit.recommendation.toFixed(0)}</span>
                     <span class="tag">甜 ${it.fit.sweetness.toFixed(0)}</span>
                     <span class="tag">loading ${it.fit.loading.toFixed(0)}</span>
-                    ${it.fit.interest > 0 ? `<span class="tag">興趣 +${it.fit.interest.toFixed(0)}</span>` : ''}
+                    <span class="tag">興趣 ${it.fit.interest.toFixed(0)}</span>
+                    <span class="tag">能力 ${it.fit.ability.toFixed(0)}</span>
                 </div>
                 <div class="course-card-details">
                     <span><i class="fas fa-book"></i> ${escapeHtml(it.course_name)}</span>
@@ -1035,8 +1036,10 @@ function renderFitBox(fit) {
                 <span><strong>甜度匹配</strong>${fit.sweetness.toFixed(0)}</span>
                 <span><strong>Loading 匹配</strong>${fit.loading.toFixed(0)}</span>
                 <span><strong>興趣命中</strong>${fit.interest.toFixed(0)}</span>
+                <span><strong>能力匹配</strong>${fit.ability.toFixed(0)}</span>
+                <span><strong>PTT 樣本</strong>${fit.n_reviews} 篇</span>
             </div>
-            ${fit.n_reviews === 0 ? '<p style="font-size:0.78rem;color:#888;margin:6px 0 0 0">(無 PTT 評價,分數來自興趣命中)</p>' : ''}
+            ${fit.n_reviews === 0 ? '<p style="font-size:0.78rem;color:#888;margin:6px 0 0 0">(無 PTT 評價,前 3 項用中性 50)</p>' : ''}
         </div>
     `;
 }
@@ -1087,6 +1090,7 @@ async function renderFitAnalysisView() {
                         <span class="fit-bar-pill">甜 <strong>${it.fit.sweetness.toFixed(0)}</strong></span>
                         <span class="fit-bar-pill">loading <strong>${it.fit.loading.toFixed(0)}</strong></span>
                         <span class="fit-bar-pill">興趣 <strong>${it.fit.interest.toFixed(0)}</strong></span>
+                        <span class="fit-bar-pill">能力 <strong>${it.fit.ability.toFixed(0)}</strong></span>
                     </div>
                 </div>
                 <div class="fit-total-big">${it.fit.total.toFixed(0)}<span style="font-size:0.7em;color:#888">/100</span></div>
