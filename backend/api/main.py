@@ -44,6 +44,8 @@ from .schemas import (
     TeacherCourseItem,
     TeacherDetail,
     TeacherStats,
+    WishlistAdd,
+    WishlistItem,
     LoginRequest,
     RecommendationItem,
     RegisterRequest,
@@ -652,3 +654,90 @@ def delete_history(
     conn.commit()
     if cur.rowcount == 0:
         raise HTTPException(404, "history item not found")
+
+
+# =========================================================================
+# Wishlist (想修清單)
+# =========================================================================
+
+
+def _wishlist_row_to_item(row: sqlite3.Row) -> WishlistItem:
+    return WishlistItem(
+        id=row["id"],
+        serial_no=row["serial_no"],
+        notes=row["notes"],
+        added_at=row["added_at"],
+        course_code=row["course_code"] or "",
+        course_name=row["course_name"] or "",
+        teacher=row["teacher"] or "",
+        credits=row["credits"] or "",
+        department=row["department"] or "",
+    )
+
+
+@app.get("/me/wishlist", response_model=list[WishlistItem])
+def list_my_wishlist(
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> list[WishlistItem]:
+    rows = conn.execute(
+        """
+        SELECT w.id, w.serial_no, w.notes, w.added_at,
+               c.course_code, c.course_name, c.teacher, c.credits, c.department
+        FROM user_wishlist w
+        LEFT JOIN courses c ON c.serial_no = w.serial_no
+        WHERE w.user_id = ?
+        ORDER BY w.added_at DESC
+        """,
+        (current["id"],),
+    ).fetchall()
+    return [_wishlist_row_to_item(r) for r in rows]
+
+
+@app.post("/me/wishlist", response_model=WishlistItem, status_code=201)
+def add_to_wishlist(
+    body: WishlistAdd,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> WishlistItem:
+    course = conn.execute(
+        "SELECT 1 FROM courses WHERE serial_no = ?", (body.serial_no,)
+    ).fetchone()
+    if course is None:
+        raise HTTPException(404, f"course {body.serial_no} not found")
+
+    try:
+        cur = conn.execute(
+            "INSERT INTO user_wishlist (user_id, serial_no, notes) VALUES (?, ?, ?)",
+            (current["id"], body.serial_no, body.notes or None),
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "已在想修清單中")
+    conn.commit()
+
+    row = conn.execute(
+        """
+        SELECT w.id, w.serial_no, w.notes, w.added_at,
+               c.course_code, c.course_name, c.teacher, c.credits, c.department
+        FROM user_wishlist w
+        LEFT JOIN courses c ON c.serial_no = w.serial_no
+        WHERE w.id = ?
+        """,
+        (cur.lastrowid,),
+    ).fetchone()
+    return _wishlist_row_to_item(row)
+
+
+@app.delete("/me/wishlist/{wishlist_id}", status_code=204)
+def delete_wishlist(
+    wishlist_id: int,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> None:
+    cur = conn.execute(
+        "DELETE FROM user_wishlist WHERE id = ? AND user_id = ?",
+        (wishlist_id, current["id"]),
+    )
+    conn.commit()
+    if cur.rowcount == 0:
+        raise HTTPException(404, "wishlist item not found")

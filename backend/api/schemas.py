@@ -166,6 +166,26 @@ class HistoryItem(BaseModel):
     department: str
 
 
+# ---- Wishlist ----
+
+
+class WishlistAdd(BaseModel):
+    serial_no: str
+    notes: str | None = None
+
+
+class WishlistItem(BaseModel):
+    id: int
+    serial_no: str
+    notes: str | None
+    added_at: str
+    course_code: str
+    course_name: str
+    teacher: str
+    credits: str
+    department: str
+
+
 # ---- User profile ----
 
 

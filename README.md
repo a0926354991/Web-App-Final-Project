@@ -19,6 +19,10 @@ NTU Personalized Course Recommendation — Web 應用程式期末專案。
 | **課程比較** | 勾選 2-3 門課 → 全螢幕並排比較適合度 / PTT 樣本 / 評量方式 / 課程要求 |
 | **使用者資訊** | 5 軸能力 + 甜度偏好 + loading 偏好 + 興趣 tag |
 | **修課歷史** | 紀錄學期 + 成績 + 筆記；探索頁顯示「已修」狀態；已修課自動排除推薦 |
+| **想修清單** | backend 持久化的 wishlist，跟修課歷史對稱 |
+| **我的課表** | localStorage 持久化的本學期排課，有衝堂偵測 + 視覺化週課表 |
+| **相關課程** | 修過 X 也修 Y（CF Jaccard）+ 內容相似度（dept / code / ability / interest Jaccard）hybrid |
+| **PDF 匯出** | 修課歷史 / 想修 / 課表都可一鍵列印成 PDF |
 | **個性化推薦** | 5 成份加權算「適合度 %」，搭配一句話 explanation 解釋為什麼推薦 |
 | **適合度顯示位置** | 儀表板 / 探索表格（可按分數排序）/ 詳情抽屜 / 適合度分析 tab（Top 20）|
 | **Dark mode** | header 一鍵切換深淺色，localStorage 持久化 |
@@ -91,6 +95,7 @@ python backend/scripts/ingest_csv.py
 
 ### 3. 啟動 server
 
+**選項 A:本機開發 (有 hot reload)**
 ```bash
 # Terminal 1: 後端 API
 source .venv/bin/activate
@@ -102,7 +107,15 @@ cd frontend/src
 python3 -m http.server 5500
 ```
 
+**選項 B:Docker compose 一鍵啟動 (示範 / 部署用)**
+```bash
+docker compose up --build
+```
+
 瀏覽器開 **http://localhost:5500**。
+
+> Docker 版會自動 mount `backend/data/`,所以 `app.db` 跟 CSV 跟本機共用。
+> 注意 backend container 不包含爬蟲依賴 (Playwright),只有 API 必要的 deps。
 
 ---
 
@@ -136,6 +149,10 @@ python3 -m http.server 5500
 | GET | `/me/history` | 修課歷史列表（含 join courses）| ✓ |
 | POST | `/me/history` | 新增一筆 | ✓ |
 | DELETE | `/me/history/{id}` | 刪除一筆 | ✓ |
+| GET | `/me/wishlist` | 想修清單 | ✓ |
+| POST | `/me/wishlist` | 加入想修 | ✓ |
+| DELETE | `/me/wishlist/{id}` | 移除想修 | ✓ |
+| GET | `/courses/{serial_no}/related` | 相關課程 (CF + content hybrid) | – |
 | GET | `/me/recommendations?limit=N` | Top N 推薦（排除已修）| ✓ |
 | GET | `/me/fit/{serial_no}` | 單堂課適合度分數 + 各成份 + 推薦理由 | ✓ |
 | POST | `/me/fits` | 批次拿一組課的適合度（供表格顯示）| ✓ |

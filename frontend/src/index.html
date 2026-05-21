@@ -77,6 +77,13 @@
                             <span class="en">My Schedule</span>
                         </div>
                     </a>
+                    <a href="#" class="sidebar-item" data-target="wishlist">
+                        <i class="far fa-heart"></i>
+                        <div class="sidebar-item-text">
+                            <span class="zh">想修清單</span>
+                            <span class="en">Wishlist</span>
+                        </div>
+                    </a>
                     <a href="#" class="sidebar-item" data-target="fit">
                         <i class="fas fa-chart-line"></i>
                         <div class="sidebar-item-text">
@@ -239,7 +246,12 @@
                     </div>
                     <div class="schedule-toolbar">
                         <span id="schedule-summary" class="results-meta">尚未加入任何課程</span>
-                        <button class="btn-ghost" id="schedule-clear">清空</button>
+                        <div>
+                            <button class="btn-ghost" id="schedule-export">
+                                <i class="fas fa-print"></i> 匯出 PDF
+                            </button>
+                            <button class="btn-ghost" id="schedule-clear">清空</button>
+                        </div>
                     </div>
                     <div id="schedule-conflicts" class="schedule-conflict-banner" hidden></div>
                     <div class="card schedule-card">
@@ -250,6 +262,45 @@
                             <h2 class="card-title">課表內的課 <span class="en">Courses</span></h2>
                         </div>
                         <div id="schedule-course-list"></div>
+                    </div>
+                </section>
+
+                <!-- ===== View: 想修清單 ===== -->
+                <section class="view" id="view-wishlist" hidden>
+                    <div class="dashboard-header">
+                        <h1 class="dashboard-title">想修清單 <span class="dashboard-subtitle">Wishlist</span></h1>
+                    </div>
+
+                    <div id="wishlist-need-login" class="card placeholder-card" hidden>
+                        <i class="fas fa-lock"></i>
+                        <p>請先登入才能管理想修清單。</p>
+                    </div>
+
+                    <div id="wishlist-content" hidden>
+                        <div class="schedule-toolbar">
+                            <span id="wishlist-meta" class="results-meta">載入中…</span>
+                            <button class="btn-ghost" id="wishlist-export">
+                                <i class="fas fa-print"></i> 匯出 PDF
+                            </button>
+                        </div>
+                        <div class="results-table-wrapper">
+                            <table class="results-table">
+                                <thead>
+                                    <tr>
+                                        <th>課號</th>
+                                        <th>課名</th>
+                                        <th>教師</th>
+                                        <th>學分</th>
+                                        <th>系所</th>
+                                        <th>備註</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="wishlist-body">
+                                    <tr><td colspan="7" class="empty-row">想修清單還是空的</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
@@ -265,7 +316,12 @@
                     </div>
 
                     <div id="history-content" hidden>
-                        <div class="results-meta" id="history-meta">載入中…</div>
+                        <div class="schedule-toolbar">
+                            <span class="results-meta" id="history-meta">載入中…</span>
+                            <button class="btn-ghost" id="history-export">
+                                <i class="fas fa-print"></i> 匯出 PDF
+                            </button>
+                        </div>
                         <div class="results-table-wrapper">
                             <table class="results-table">
                                 <thead>
@@ -326,6 +382,9 @@
             </main>
         </div>
     </div>
+
+    <!-- ===== Toast 通知 container ===== -->
+    <div class="toast-container" id="toast-container"></div>
 
     <!-- ===== 浮動比較按鈕 ===== -->
     <button class="compare-fab" id="compare-fab" hidden>
