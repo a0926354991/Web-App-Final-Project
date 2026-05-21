@@ -93,6 +93,33 @@ AuthResponse.model_rebuild()
 # ---- User profile ----
 
 
+# ---- User history ----
+
+
+class HistoryAdd(BaseModel):
+    serial_no: str
+    semester: str
+    grade: str | None = None
+    notes: str | None = None
+
+
+class HistoryItem(BaseModel):
+    id: int
+    serial_no: str
+    semester: str
+    grade: str | None
+    notes: str | None
+    added_at: str
+    course_code: str
+    course_name: str
+    teacher: str
+    credits: str
+    department: str
+
+
+# ---- User profile ----
+
+
 class UserProfile(BaseModel):
     ability_logic: int = Field(50, ge=0, le=100)
     ability_writing: int = Field(50, ge=0, le=100)

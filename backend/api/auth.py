@@ -57,6 +57,18 @@ def init_auth_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 
+        CREATE TABLE IF NOT EXISTS user_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            serial_no  TEXT NOT NULL,
+            semester   TEXT NOT NULL,
+            grade      TEXT,
+            notes      TEXT,
+            added_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_history_user ON user_history(user_id);
+
         CREATE TABLE IF NOT EXISTS user_profiles (
             user_id            INTEGER PRIMARY KEY,
             ability_logic      INTEGER NOT NULL DEFAULT 50,

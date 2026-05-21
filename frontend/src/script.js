@@ -57,6 +57,9 @@ sidebarItems.forEach(item => {
         if (target === 'userinfo') {
             renderProfileView();
         }
+        if (target === 'history') {
+            renderHistoryView();
+        }
 
         if (window.innerWidth <= 992) {
             document.getElementById('sidebar').classList.remove('mobile-open');
@@ -223,10 +226,16 @@ async function searchCourses({ keepParams = false } = {}) {
 
 function renderResults(items) {
     if (items.length === 0) {
-        els.resultsBody.innerHTML = '<tr><td colspan="6" class="empty-row">沒有符合條件的課程</td></tr>';
+        els.resultsBody.innerHTML = '<tr><td colspan="7" class="empty-row">沒有符合條件的課程</td></tr>';
         return;
     }
-    els.resultsBody.innerHTML = items.map(c => `
+    els.resultsBody.innerHTML = items.map(c => {
+        const inHist = historyState.serialSet.has(c.serial_no);
+        const btnHtml = getToken() ? `
+            <button class="btn-add-history ${inHist ? 'in-history' : ''}" data-serial="${escapeAttr(c.serial_no)}" data-name="${escapeAttr(c.course_name)}">
+                ${inHist ? '<i class="fas fa-check"></i> 已修' : '<i class="fas fa-plus"></i> 加入歷史'}
+            </button>` : '';
+        return `
         <tr data-serial="${escapeAttr(c.serial_no)}">
             <td>${escapeHtml(c.course_code)}</td>
             <td>${escapeHtml(c.course_name)}</td>
@@ -234,14 +243,24 @@ function renderResults(items) {
             <td>${escapeHtml(c.department)}</td>
             <td>${escapeHtml(c.credits)}</td>
             <td>${escapeHtml(c.schedule_time) || '—'}</td>
+            <td class="action-cell">${btnHtml}</td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 
     els.resultsBody.querySelectorAll('tr').forEach(row => {
-        row.addEventListener('click', () => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-add-history')) return;
             els.resultsBody.querySelectorAll('tr').forEach(r => r.classList.remove('active'));
             row.classList.add('active');
             openDrawer(row.dataset.serial);
+        });
+    });
+
+    els.resultsBody.querySelectorAll('.btn-add-history:not(.in-history)').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openHistoryModal(btn.dataset.serial, btn.dataset.name);
         });
     });
 }
@@ -280,6 +299,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeDrawer();
         closeAuthModal();
+        closeHistoryModal();
     }
 });
 
@@ -301,13 +321,22 @@ async function openDrawer(serialNo) {
         ]);
         drawerTitle.textContent = detail.course_name;
         drawerBody.innerHTML = renderDrawerContent(detail, reviewsResp.items);
+        const addBtn = document.getElementById('drawer-add-history-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                openHistoryModal(detail.serial_no, detail.course_name);
+            });
+        }
     } catch (err) {
         console.error(err);
         drawerBody.innerHTML = '<p class="drawer-empty">載入失敗</p>';
     }
 }
 
+let currentDrawerSerial = null;
+
 function renderDrawerContent(d, reviews) {
+    currentDrawerSerial = d.serial_no;
     const reviewsHtml = reviews.length === 0
         ? '<p class="drawer-empty" style="margin-top: 10px;">尚無 PTT 評價</p>'
         : reviews.map(r => `
@@ -326,6 +355,12 @@ function renderDrawerContent(d, reviews) {
             </div>
         `).join('');
 
+    const inHist = historyState.serialSet.has(d.serial_no);
+    const addBtn = getToken() ? `
+        <button class="drawer-add-history-btn ${inHist ? 'in-history' : ''}" id="drawer-add-history-btn" ${inHist ? 'disabled' : ''}>
+            ${inHist ? '<i class="fas fa-check"></i> 已在修課歷史中' : '<i class="fas fa-plus"></i> 加入修課歷史'}
+        </button>` : '';
+
     return `
         <div class="drawer-section">
             <div class="course-name-big">${escapeHtml(d.course_name)}</div>
@@ -335,6 +370,7 @@ function renderDrawerContent(d, reviews) {
             <div class="course-meta-row"><strong>學分</strong> ${escapeHtml(d.credits) || '—'}　|　<strong>必選修</strong> ${escapeHtml(d.req_type) || '—'}</div>
             <div class="course-meta-row"><strong>時間</strong> ${escapeHtml(d.schedule_time) || '—'}　|　<strong>地點</strong> ${escapeHtml(d.location) || '—'}</div>
             <div class="course-meta-row"><strong>語言</strong> ${escapeHtml(d.language) || '—'}</div>
+            ${addBtn}
         </div>
 
         ${d.overview ? `
@@ -508,6 +544,7 @@ async function applyLoggedInUI(user) {
 
     const p = await loadProfile();
     if (p) updateRadarFromProfile(p);
+    await loadHistory();
 }
 
 function applyLoggedOutUI() {
@@ -525,6 +562,9 @@ function applyLoggedOutUI() {
     radarChart.data.datasets[0].data = DEFAULT_ABILITIES;
     radarChart.update();
     profileState.loaded = false;
+    historyState.items = [];
+    historyState.serialSet = new Set();
+    historyState.loaded = false;
 }
 
 async function bootstrapAuth() {
@@ -684,6 +724,175 @@ profileEls.form.addEventListener('submit', async (e) => {
         alert('儲存失敗,請稍後再試');
     } finally {
         profileEls.save.disabled = false;
+    }
+});
+
+// ==========================================================================
+// 修課歷史 (history)
+// ==========================================================================
+const historyState = {
+    items: [],
+    serialSet: new Set(),
+    loaded: false,
+};
+
+const historyEls = {
+    needLogin: document.getElementById('history-need-login'),
+    content: document.getElementById('history-content'),
+    meta: document.getElementById('history-meta'),
+    body: document.getElementById('history-body'),
+    // modal
+    overlay: document.getElementById('history-modal-overlay'),
+    close: document.getElementById('history-modal-close'),
+    course: document.getElementById('history-modal-course'),
+    form: document.getElementById('history-form'),
+    semester: document.getElementById('history-semester'),
+    grade: document.getElementById('history-grade'),
+    notes: document.getElementById('history-notes'),
+    error: document.getElementById('history-error'),
+    submit: document.getElementById('history-submit'),
+};
+
+let pendingHistorySerial = null;
+
+async function loadHistory() {
+    if (!getToken()) {
+        historyState.items = [];
+        historyState.serialSet = new Set();
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/me/history`, { headers: authHeaders() });
+        if (!res.ok) return;
+        historyState.items = await res.json();
+        historyState.serialSet = new Set(historyState.items.map(i => i.serial_no));
+        historyState.loaded = true;
+    } catch (err) {
+        console.warn('loadHistory failed', err);
+    }
+}
+
+async function renderHistoryView() {
+    if (!getToken()) {
+        historyEls.content.hidden = true;
+        historyEls.needLogin.hidden = false;
+        return;
+    }
+    historyEls.needLogin.hidden = true;
+    historyEls.content.hidden = false;
+
+    if (!historyState.loaded) {
+        historyEls.meta.textContent = '載入中…';
+        await loadHistory();
+    }
+    renderHistoryTable();
+}
+
+function renderHistoryTable() {
+    const items = historyState.items;
+    historyEls.meta.textContent = `共 ${items.length} 筆`;
+    if (items.length === 0) {
+        historyEls.body.innerHTML = '<tr><td colspan="8" class="empty-row">尚未加入任何課程 — 到「課程探索」加幾門吧</td></tr>';
+        return;
+    }
+    historyEls.body.innerHTML = items.map(h => `
+        <tr>
+            <td>${escapeHtml(h.semester)}</td>
+            <td>${escapeHtml(h.course_code)}</td>
+            <td>${escapeHtml(h.course_name)}</td>
+            <td>${escapeHtml(h.teacher)}</td>
+            <td>${escapeHtml(h.credits)}</td>
+            <td>${escapeHtml(h.grade) || '—'}</td>
+            <td>${escapeHtml(h.notes) || ''}</td>
+            <td class="action-cell">
+                <button class="btn-delete-row" data-id="${h.id}" title="刪除"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>
+    `).join('');
+
+    historyEls.body.querySelectorAll('.btn-delete-row').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('確定要刪除這筆紀錄?')) return;
+            const id = btn.dataset.id;
+            try {
+                const res = await fetch(`${API_BASE}/me/history/${id}`, {
+                    method: 'DELETE',
+                    headers: authHeaders(),
+                });
+                if (!res.ok) throw new Error(`${res.status}`);
+                await loadHistory();
+                renderHistoryTable();
+            } catch (err) {
+                console.error(err);
+                alert('刪除失敗');
+            }
+        });
+    });
+}
+
+function openHistoryModal(serialNo, courseName) {
+    if (!getToken()) {
+        openAuthModal('login');
+        return;
+    }
+    pendingHistorySerial = serialNo;
+    historyEls.course.textContent = `${courseName} (流水號 ${serialNo})`;
+    historyEls.semester.value = '';
+    historyEls.grade.value = '';
+    historyEls.notes.value = '';
+    historyEls.error.hidden = true;
+    historyEls.overlay.hidden = false;
+    setTimeout(() => historyEls.semester.focus(), 50);
+}
+
+function closeHistoryModal() {
+    historyEls.overlay.hidden = true;
+    pendingHistorySerial = null;
+}
+
+historyEls.close.addEventListener('click', closeHistoryModal);
+historyEls.overlay.addEventListener('click', (e) => {
+    if (e.target === historyEls.overlay) closeHistoryModal();
+});
+
+historyEls.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!pendingHistorySerial) return;
+    const semester = historyEls.semester.value.trim();
+    if (!semester) {
+        historyEls.error.textContent = '請填寫學期';
+        historyEls.error.hidden = false;
+        return;
+    }
+    historyEls.submit.disabled = true;
+    historyEls.error.hidden = true;
+    try {
+        const res = await fetch(`${API_BASE}/me/history`, {
+            method: 'POST',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                serial_no: pendingHistorySerial,
+                semester,
+                grade: historyEls.grade.value || null,
+                notes: historyEls.notes.value || null,
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `${res.status}`);
+        }
+        await loadHistory();
+        // 重繪探索表格的按鈕狀態
+        if (discoverState.total > 0 && !document.getElementById('view-discover').hidden) {
+            searchCourses({ keepParams: true });
+        }
+        closeHistoryModal();
+    } catch (err) {
+        console.error(err);
+        historyEls.error.textContent = `加入失敗:${err.message}`;
+        historyEls.error.hidden = false;
+    } finally {
+        historyEls.submit.disabled = false;
     }
 });
 

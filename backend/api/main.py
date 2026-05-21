@@ -30,6 +30,8 @@ from .schemas import (
     CourseDetail,
     CourseListResponse,
     CourseSummary,
+    HistoryAdd,
+    HistoryItem,
     LoginRequest,
     RegisterRequest,
     ReviewListResponse,
@@ -330,3 +332,80 @@ def update_my_profile(
         "SELECT * FROM user_profiles WHERE user_id = ?", (current["id"],)
     ).fetchone()
     return _row_to_profile(row)
+
+
+# =========================================================================
+# User history (修課歷史)
+# =========================================================================
+
+
+@app.get("/me/history", response_model=list[HistoryItem])
+def list_my_history(
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> list[HistoryItem]:
+    rows = conn.execute(
+        """
+        SELECT h.id, h.serial_no, h.semester, h.grade, h.notes, h.added_at,
+               c.course_code, c.course_name, c.teacher, c.credits, c.department
+        FROM user_history h
+        LEFT JOIN courses c ON c.serial_no = h.serial_no
+        WHERE h.user_id = ?
+        ORDER BY h.semester DESC, h.added_at DESC
+        """,
+        (current["id"],),
+    ).fetchall()
+    return [HistoryItem(**{k: (r[k] if r[k] is not None else "") for k in r.keys()}) for r in rows]
+
+
+@app.post("/me/history", response_model=HistoryItem, status_code=201)
+def add_to_history(
+    body: HistoryAdd,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> HistoryItem:
+    course = conn.execute(
+        "SELECT 1 FROM courses WHERE serial_no = ?", (body.serial_no,)
+    ).fetchone()
+    if course is None:
+        raise HTTPException(404, f"course {body.serial_no} not found")
+    if not body.semester.strip():
+        raise HTTPException(400, "semester 為必填")
+
+    cur = conn.execute(
+        """
+        INSERT INTO user_history (user_id, serial_no, semester, grade, notes)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (current["id"], body.serial_no, body.semester.strip(),
+         (body.grade or None), (body.notes or None)),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+
+    row = conn.execute(
+        """
+        SELECT h.id, h.serial_no, h.semester, h.grade, h.notes, h.added_at,
+               c.course_code, c.course_name, c.teacher, c.credits, c.department
+        FROM user_history h
+        LEFT JOIN courses c ON c.serial_no = h.serial_no
+        WHERE h.id = ?
+        """,
+        (new_id,),
+    ).fetchone()
+    return HistoryItem(**{k: (row[k] if row[k] is not None else "") for k in row.keys()})
+
+
+@app.delete("/me/history/{history_id}", status_code=204)
+def delete_history(
+    history_id: int,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> None:
+    cur = conn.execute(
+        "DELETE FROM user_history WHERE id = ? AND user_id = ?",
+        (history_id, current["id"]),
+    )
+    conn.commit()
+    if cur.rowcount == 0:
+        raise HTTPException(404, "history item not found")

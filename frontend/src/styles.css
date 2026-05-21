@@ -891,6 +891,121 @@
         }
 
         /* =========================================
+           History (修課歷史)
+           ========================================= */
+
+        .history-modal-course {
+            background: #f8f9fa;
+            border-left: 3px solid var(--active-blue);
+            padding: 10px 14px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+            color: #444;
+        }
+
+        .auth-field textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            font-family: inherit;
+            resize: vertical;
+        }
+
+        .auth-field textarea:focus,
+        .auth-field select:focus {
+            outline: none;
+            border-color: var(--active-blue);
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.15);
+        }
+
+        .auth-field select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            background: white;
+            font-family: inherit;
+        }
+
+        .btn-add-history {
+            background: none;
+            border: 1px solid #ddd;
+            color: #555;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .btn-add-history:hover {
+            border-color: var(--active-blue);
+            color: var(--active-blue);
+            background: #f0f8ff;
+        }
+
+        .btn-add-history.in-history {
+            background: #e8f5e9;
+            border-color: #4CAF50;
+            color: #2e7d32;
+            cursor: default;
+        }
+
+        .btn-delete-row {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            transition: all 0.15s;
+        }
+
+        .btn-delete-row:hover {
+            color: var(--btn-red);
+            background: #fde4e2;
+        }
+
+        .drawer-add-history-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--active-blue);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        .drawer-add-history-btn:hover {
+            background: #1976D2;
+        }
+
+        .drawer-add-history-btn.in-history {
+            background: #4CAF50;
+            cursor: default;
+        }
+
+        /* 探索頁表格多一欄按鈕,讓表格不要爆 */
+        .results-table td.action-cell,
+        .results-table th.action-cell {
+            width: 1%;
+            white-space: nowrap;
+            text-align: right;
+        }
+
+        /* =========================================
            Auth Modal (登入 / 註冊)
            ========================================= */
 

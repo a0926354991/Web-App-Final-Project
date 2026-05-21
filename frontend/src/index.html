@@ -186,10 +186,11 @@
                                     <th>系所</th>
                                     <th>學分</th>
                                     <th>時間</th>
+                                    <th class="action-cell"></th>
                                 </tr>
                             </thead>
                             <tbody id="results-body">
-                                <tr><td colspan="6" class="empty-row">點「套用篩選」開始搜尋課程</td></tr>
+                                <tr><td colspan="7" class="empty-row">點「套用篩選」開始搜尋課程</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -247,14 +248,38 @@
                     </form>
                 </section>
 
-                <!-- ===== View: 修課歷史 (placeholder) ===== -->
+                <!-- ===== View: 修課歷史 ===== -->
                 <section class="view" id="view-history" hidden>
                     <div class="dashboard-header">
                         <h1 class="dashboard-title">修課歷史紀錄 <span class="dashboard-subtitle">History</span></h1>
                     </div>
-                    <div class="card placeholder-card">
-                        <i class="fas fa-tools"></i>
-                        <p>此頁面尚未實作。</p>
+
+                    <div id="history-need-login" class="card placeholder-card" hidden>
+                        <i class="fas fa-lock"></i>
+                        <p>請先登入才能管理修課歷史。</p>
+                    </div>
+
+                    <div id="history-content" hidden>
+                        <div class="results-meta" id="history-meta">載入中…</div>
+                        <div class="results-table-wrapper">
+                            <table class="results-table">
+                                <thead>
+                                    <tr>
+                                        <th>學期</th>
+                                        <th>課號</th>
+                                        <th>課名</th>
+                                        <th>教師</th>
+                                        <th>學分</th>
+                                        <th>成績</th>
+                                        <th>筆記</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-body">
+                                    <tr><td colspan="8" class="empty-row">尚未加入任何課程</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
@@ -269,6 +294,37 @@
                     </div>
                 </section>
             </main>
+        </div>
+    </div>
+
+    <!-- ===== 加入歷史 Modal ===== -->
+    <div class="auth-modal-overlay" id="history-modal-overlay" hidden>
+        <div class="auth-modal" role="dialog" aria-modal="true">
+            <button class="auth-modal-close" id="history-modal-close" aria-label="關閉"><i class="fas fa-times"></i></button>
+            <h2 id="history-modal-title">加入修課歷史</h2>
+            <div class="history-modal-course" id="history-modal-course"></div>
+            <form id="history-form" novalidate>
+                <label class="auth-field">
+                    <span>學期 Semester <em style="color:#df3d31">*</em></span>
+                    <input type="text" id="history-semester" placeholder="例:113-1" required>
+                </label>
+                <label class="auth-field">
+                    <span>成績 Grade (選填)</span>
+                    <select id="history-grade">
+                        <option value="">不填</option>
+                        <option>A+</option><option>A</option><option>A-</option>
+                        <option>B+</option><option>B</option><option>B-</option>
+                        <option>C+</option><option>C</option><option>C-</option>
+                        <option>D</option><option>F</option><option>Pass</option><option>Fail</option>
+                    </select>
+                </label>
+                <label class="auth-field">
+                    <span>個人筆記 Notes (選填)</span>
+                    <textarea id="history-notes" rows="3" placeholder="這課如何…"></textarea>
+                </label>
+                <div class="auth-error" id="history-error" hidden></div>
+                <button type="submit" class="btn-primary auth-submit" id="history-submit">加入</button>
+            </form>
         </div>
     </div>
 
