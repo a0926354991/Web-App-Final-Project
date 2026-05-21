@@ -39,28 +39,35 @@
                     </div>
                 </div>
                 <nav class="sidebar-nav">
-                    <a href="#" class="sidebar-item active">
+                    <a href="#" class="sidebar-item active" data-target="dashboard">
+                        <i class="fas fa-home"></i>
+                        <div class="sidebar-item-text">
+                            <span class="zh">儀表板</span>
+                            <span class="en">Dashboard</span>
+                        </div>
+                    </a>
+                    <a href="#" class="sidebar-item" data-target="userinfo">
                         <i class="fas fa-user-edit"></i>
                         <div class="sidebar-item-text">
                             <span class="zh">使用者資訊輸入</span>
                             <span class="en">User Info Input</span>
                         </div>
                     </a>
-                    <a href="#" class="sidebar-item">
+                    <a href="#" class="sidebar-item" data-target="history">
                         <i class="fas fa-history"></i>
                         <div class="sidebar-item-text">
                             <span class="zh">修課歷史紀錄</span>
                             <span class="en">History</span>
                         </div>
                     </a>
-                    <a href="#" class="sidebar-item">
+                    <a href="#" class="sidebar-item" data-target="discover">
                         <i class="fas fa-search"></i>
                         <div class="sidebar-item-text">
                             <span class="zh">課程探索與篩選</span>
                             <span class="en">Course Discovery</span>
                         </div>
                     </a>
-                    <a href="#" class="sidebar-item">
+                    <a href="#" class="sidebar-item" data-target="fit">
                         <i class="fas fa-chart-line"></i>
                         <div class="sidebar-item-text">
                             <span class="zh">個性化適合度分析</span>
@@ -79,68 +86,168 @@
             </aside>
 
             <main class="main-content">
-                <div class="dashboard-header">
-                    <h1 class="dashboard-title">儀表板 Dashboard</h1>
-                </div>
-
-                <div class="dashboard-grid">
-                    <div class="card radar-card">
-                        <div class="card-header">
-                            <h2 class="card-title">你的能力雷達圖 <span class="en">Your Skill Radar</span></h2>
+                <!-- ===== View: 儀表板 ===== -->
+                <section class="view" id="view-dashboard">
+                    <div class="dashboard-header">
+                        <h1 class="dashboard-title">儀表板 Dashboard</h1>
+                    </div>
+                    <div class="dashboard-grid">
+                        <div class="card radar-card">
+                            <div class="card-header">
+                                <h2 class="card-title">你的能力雷達圖 <span class="en">Your Skill Radar</span></h2>
+                            </div>
+                            <div class="radar-container">
+                                <canvas id="radarChart"></canvas>
+                            </div>
                         </div>
-                        <div class="radar-container">
-                            <canvas id="radarChart"></canvas>
+
+                        <div class="card recommended-card">
+                            <div class="card-header">
+                                <h2 class="card-title">為您推薦 <span class="en">Recommended</span></h2>
+                            </div>
+                            <div class="course-list">
+                                <div class="course-card">
+                                    <div class="course-card-tag"><i class="fas fa-star" style="color:#FFD700"></i> 極度推薦</div>
+                                    <div class="course-card-subtags">
+                                        <span class="tag">#給分甜</span>
+                                        <span class="tag">#期末報告</span>
+                                        <span class="tag">#不點名</span>
+                                        <span class="tag">#NLP</span>
+                                    </div>
+                                    <div class="course-card-details">
+                                        <span><i class="fas fa-book"></i> 自然語言處理</span>
+                                        <span><i class="fas fa-clock"></i> 3 學分</span>
+                                    </div>
+                                </div>
+                                <div class="course-card">
+                                    <div class="course-card-tag">適合度 85%</div>
+                                    <div class="course-card-subtags">
+                                        <span class="tag">#邏輯訓練</span>
+                                        <span class="tag">#作業偏難</span>
+                                        <span class="tag">#扎實</span>
+                                    </div>
+                                    <div class="course-card-details">
+                                        <span><i class="fas fa-book"></i> 資料結構與演算法</span>
+                                        <span><i class="fas fa-clock"></i> 3 學分</span>
+                                    </div>
+                                </div>
+                                <div class="course-card">
+                                    <div class="course-card-tag">填補空堂</div>
+                                    <div class="course-card-subtags">
+                                        <span class="tag">#輕鬆聽講</span>
+                                        <span class="tag">#無期中考</span>
+                                    </div>
+                                    <div class="course-card-details">
+                                        <span><i class="fas fa-book"></i> 藝術史導論</span>
+                                        <span><i class="fas fa-clock"></i> 2 學分</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                </section>
 
-                    <div class="card recommended-card">
-                        <div class="card-header">
-                            <h2 class="card-title">為您推薦 <span class="en">Recommended</span></h2>
-                        </div>
-                        <div class="course-list">
-                            <div class="course-card">
-                                <div class="course-card-tag"><i class="fas fa-star" style="color:#FFD700"></i> 極度推薦
-                                </div>
-                                <div class="course-card-subtags">
-                                    <span class="tag">#給分甜</span>
-                                    <span class="tag">#期末報告</span>
-                                    <span class="tag">#不點名</span>
-                                    <span class="tag">#NLP</span>
-                                </div>
-                                <div class="course-card-details">
-                                    <span><i class="fas fa-book"></i> 自然語言處理</span>
-                                    <span><i class="fas fa-clock"></i> 3 學分</span>
-                                </div>
-                            </div>
-                            <div class="course-card">
-                                <div class="course-card-tag">適合度 85%</div>
-                                <div class="course-card-subtags">
-                                    <span class="tag">#邏輯訓練</span>
-                                    <span class="tag">#作業偏難</span>
-                                    <span class="tag">#扎實</span>
-                                </div>
-                                <div class="course-card-details">
-                                    <span><i class="fas fa-book"></i> 資料結構與演算法</span>
-                                    <span><i class="fas fa-clock"></i> 3 學分</span>
-                                </div>
-                            </div>
-                            <div class="course-card">
-                                <div class="course-card-tag">填補空堂</div>
-                                <div class="course-card-subtags">
-                                    <span class="tag">#輕鬆聽講</span>
-                                    <span class="tag">#無期中考</span>
-                                </div>
-                                <div class="course-card-details">
-                                    <span><i class="fas fa-book"></i> 藝術史導論</span>
-                                    <span><i class="fas fa-clock"></i> 2 學分</span>
-                                </div>
-                            </div>
-                        </div>
+                <!-- ===== View: 課程探索 ===== -->
+                <section class="view" id="view-discover" hidden>
+                    <div class="dashboard-header">
+                        <h1 class="dashboard-title">課程探索 <span class="dashboard-subtitle">Course Discovery</span></h1>
                     </div>
-                </div>
+
+                    <div class="filter-bar">
+                        <div class="filter-input-wrapper">
+                            <i class="fas fa-search"></i>
+                            <input type="search" id="search-input" placeholder="搜尋課名 / 教師 / 課號…">
+                        </div>
+                        <select id="filter-dept">
+                            <option value="">全部系所</option>
+                        </select>
+                        <select id="filter-credits">
+                            <option value="">全部學分</option>
+                            <option value="1">1 學分</option>
+                            <option value="2">2 學分</option>
+                            <option value="3">3 學分</option>
+                            <option value="4">4 學分</option>
+                            <option value="6">6 學分</option>
+                        </select>
+                        <button id="search-btn" class="btn-primary">
+                            <i class="fas fa-filter"></i> 套用篩選
+                        </button>
+                    </div>
+
+                    <div class="results-meta" id="results-meta">尚未搜尋</div>
+
+                    <div class="results-table-wrapper">
+                        <table class="results-table">
+                            <thead>
+                                <tr>
+                                    <th>課號</th>
+                                    <th>課名</th>
+                                    <th>教師</th>
+                                    <th>系所</th>
+                                    <th>學分</th>
+                                    <th>時間</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-body">
+                                <tr><td colspan="6" class="empty-row">點「套用篩選」開始搜尋課程</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="pagination" id="pagination" hidden>
+                        <button id="page-prev" class="btn-ghost"><i class="fas fa-chevron-left"></i> 上一頁</button>
+                        <span id="page-info">第 1 頁</span>
+                        <button id="page-next" class="btn-ghost">下一頁 <i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </section>
+
+                <!-- ===== View: 使用者資訊 (placeholder) ===== -->
+                <section class="view" id="view-userinfo" hidden>
+                    <div class="dashboard-header">
+                        <h1 class="dashboard-title">使用者資訊輸入 <span class="dashboard-subtitle">User Info Input</span></h1>
+                    </div>
+                    <div class="card placeholder-card">
+                        <i class="fas fa-tools"></i>
+                        <p>此頁面尚未實作。</p>
+                    </div>
+                </section>
+
+                <!-- ===== View: 修課歷史 (placeholder) ===== -->
+                <section class="view" id="view-history" hidden>
+                    <div class="dashboard-header">
+                        <h1 class="dashboard-title">修課歷史紀錄 <span class="dashboard-subtitle">History</span></h1>
+                    </div>
+                    <div class="card placeholder-card">
+                        <i class="fas fa-tools"></i>
+                        <p>此頁面尚未實作。</p>
+                    </div>
+                </section>
+
+                <!-- ===== View: 適合度分析 (placeholder) ===== -->
+                <section class="view" id="view-fit" hidden>
+                    <div class="dashboard-header">
+                        <h1 class="dashboard-title">個性化適合度分析 <span class="dashboard-subtitle">Fit Analysis</span></h1>
+                    </div>
+                    <div class="card placeholder-card">
+                        <i class="fas fa-tools"></i>
+                        <p>此頁面尚未實作。</p>
+                    </div>
+                </section>
             </main>
         </div>
     </div>
+
+    <!-- ===== 右側課程詳情抽屜 ===== -->
+    <aside class="detail-drawer" id="detail-drawer">
+        <div class="drawer-header">
+            <h2 id="drawer-title">課程詳情</h2>
+            <button id="drawer-close" aria-label="關閉"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="drawer-body" id="drawer-body">
+            <p class="drawer-empty">請先選一門課</p>
+        </div>
+    </aside>
+    <div class="drawer-overlay" id="drawer-overlay"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
