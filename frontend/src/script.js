@@ -242,8 +242,10 @@ function renderResults(items) {
             <button class="btn-add-history ${inHist ? 'in-history' : ''}" data-serial="${escapeAttr(c.serial_no)}" data-name="${escapeAttr(c.course_name)}">
                 ${inHist ? '<i class="fas fa-check"></i> 已修' : '<i class="fas fa-plus"></i> 加入歷史'}
             </button>` : '';
+        const checked = compareState.serials.has(c.serial_no) ? 'checked' : '';
         return `
         <tr data-serial="${escapeAttr(c.serial_no)}">
+            <td class="check-cell"><input type="checkbox" class="compare-check" data-serial="${escapeAttr(c.serial_no)}" ${checked}></td>
             <td>${escapeHtml(c.course_code)}</td>
             <td>${escapeHtml(c.course_name)}</td>
             <td><a href="#" class="teacher-link" data-teacher="${escapeAttr(c.teacher)}">${escapeHtml(c.teacher)}</a></td>
@@ -257,10 +259,19 @@ function renderResults(items) {
 
     els.resultsBody.querySelectorAll('tr').forEach(row => {
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.btn-add-history') || e.target.closest('.teacher-link')) return;
+            if (e.target.closest('.btn-add-history')
+                || e.target.closest('.teacher-link')
+                || e.target.closest('.compare-check')) return;
             els.resultsBody.querySelectorAll('tr').forEach(r => r.classList.remove('active'));
             row.classList.add('active');
             openDrawer(row.dataset.serial);
+        });
+    });
+
+    els.resultsBody.querySelectorAll('.compare-check').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            e.stopPropagation();
+            toggleCompare(cb.dataset.serial, cb.checked);
         });
     });
 
@@ -293,6 +304,158 @@ function renderPagination() {
 }
 
 // ==========================================================================
+// 課程比較 (compare)
+// ==========================================================================
+const MAX_COMPARE = 3;
+const compareState = { serials: new Set() };
+
+const compareFab = document.getElementById('compare-fab');
+const compareCountEl = document.getElementById('compare-count');
+const compareModal = document.getElementById('compare-modal');
+const compareBody = document.getElementById('compare-modal-body');
+
+function toggleCompare(serial, checked) {
+    if (checked) {
+        if (compareState.serials.size >= MAX_COMPARE) {
+            alert(`最多比較 ${MAX_COMPARE} 門課`);
+            const cb = els.resultsBody.querySelector(`.compare-check[data-serial="${serial}"]`);
+            if (cb) cb.checked = false;
+            return;
+        }
+        compareState.serials.add(serial);
+    } else {
+        compareState.serials.delete(serial);
+    }
+    updateCompareFab();
+}
+
+function updateCompareFab() {
+    const n = compareState.serials.size;
+    compareFab.hidden = n === 0;
+    compareCountEl.textContent = n;
+}
+
+function clearCompare() {
+    compareState.serials.clear();
+    updateCompareFab();
+    els.resultsBody.querySelectorAll('.compare-check').forEach(cb => { cb.checked = false; });
+}
+
+document.getElementById('compare-clear').addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearCompare();
+});
+
+compareFab.addEventListener('click', openCompareModal);
+document.getElementById('compare-modal-close').addEventListener('click', closeCompareModal);
+compareModal.addEventListener('click', (e) => {
+    if (e.target === compareModal) closeCompareModal();
+});
+
+function closeCompareModal() { compareModal.hidden = true; }
+
+async function openCompareModal() {
+    if (compareState.serials.size === 0) return;
+    compareModal.hidden = false;
+    compareBody.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入課程資料…</div>';
+
+    const serials = [...compareState.serials];
+    try {
+        const courses = await Promise.all(serials.map(s =>
+            fetch(`${API_BASE}/courses/${encodeURIComponent(s)}`).then(r => r.json())
+        ));
+        let fits = {};
+        if (getToken()) {
+            fits = await fetch(`${API_BASE}/me/fits`, {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(serials),
+            }).then(r => r.ok ? r.json() : {});
+        }
+        compareBody.innerHTML = renderCompareTable(courses, fits);
+    } catch (err) {
+        console.error(err);
+        compareBody.innerHTML = '<p class="drawer-empty">載入失敗</p>';
+    }
+}
+
+function renderCompareTable(courses, fits) {
+    const cols = courses.map(c => `
+        <th class="course-header course-col">
+            <span class="compare-course-name">${escapeHtml(c.course_name)}</span>
+            <span class="compare-course-meta">${escapeHtml(c.course_code)} · 流水號 ${escapeHtml(c.serial_no)}</span>
+        </th>
+    `).join('');
+
+    const row = (label, cellFn) => `
+        <tr>
+            <th class="label-col">${label}</th>
+            ${courses.map(c => `<td class="course-col">${cellFn(c)}</td>`).join('')}
+        </tr>
+    `;
+
+    const fitRow = (label, key) => {
+        if (!getToken()) return '';
+        return `
+            <tr>
+                <th class="label-col">${label}</th>
+                ${courses.map(c => {
+                    const f = fits[c.serial_no];
+                    return `<td class="course-col">${f ? f[key].toFixed(0) : '—'}</td>`;
+                }).join('')}
+            </tr>
+        `;
+    };
+
+    const fitTotal = getToken() ? `
+        <tr>
+            <th class="label-col">適合度</th>
+            ${courses.map(c => {
+                const f = fits[c.serial_no];
+                return `<td class="course-col">${f ? `<span class="compare-fit-total">${f.total.toFixed(0)}%</span>` : '—'}</td>`;
+            }).join('')}
+        </tr>
+    ` : '';
+
+    const explanationRow = getToken() ? `
+        <tr>
+            <th class="label-col">推薦理由</th>
+            ${courses.map(c => {
+                const f = fits[c.serial_no];
+                return `<td class="course-col" style="font-size:0.8rem;color:#555;font-style:italic">${f ? escapeHtml(f.explanation || '') : '—'}</td>`;
+            }).join('')}
+        </tr>
+    ` : '';
+
+    return `
+        <table class="compare-table">
+            <thead>
+                <tr><th class="label-col"></th>${cols}</tr>
+            </thead>
+            <tbody>
+                ${row('教師', c => `<a href="#" class="teacher-link" data-teacher="${escapeAttr(c.teacher)}">${escapeHtml(c.teacher) || '—'}</a>`)}
+                ${row('系所', c => escapeHtml(c.department) || '—')}
+                ${row('學分', c => escapeHtml(c.credits) || '—')}
+                ${row('必選修', c => escapeHtml(c.req_type) || '—')}
+                ${row('授課語言', c => escapeHtml(c.language) || '—')}
+                ${row('上課時間', c => escapeHtml(c.schedule_time) || '—')}
+                ${row('上課地點', c => escapeHtml(c.location) || '—')}
+                ${fitTotal}
+                ${fitRow('PTT 推薦', 'recommendation')}
+                ${fitRow('甜度匹配', 'sweetness')}
+                ${fitRow('loading 匹配', 'loading')}
+                ${fitRow('興趣命中', 'interest')}
+                ${fitRow('能力匹配', 'ability')}
+                ${getToken() ? row('PTT 樣本', c => `${(fits[c.serial_no]?.n_reviews ?? 0)} 篇`) : ''}
+                ${explanationRow}
+                ${row('評量方式', c => `<div class="compare-text">${escapeHtml(c.grading) || '—'}</div>`)}
+                ${row('課程要求', c => `<div class="compare-text">${escapeHtml(c.requirements) || '—'}</div>`)}
+            </tbody>
+        </table>
+    `;
+}
+
+// ==========================================================================
 // 課程詳情抽屜 (drawer)
 // ==========================================================================
 const drawer = document.getElementById('detail-drawer');
@@ -316,6 +479,7 @@ document.addEventListener('keydown', (e) => {
         closeDrawer();
         closeAuthModal();
         closeHistoryModal();
+        closeCompareModal();
     }
 });
 
