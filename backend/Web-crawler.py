@@ -24,6 +24,7 @@ _DATA_DIR = Path(__file__).resolve().parent / "data"
 SCROLL_PAUSE_MS = 1800
 DETAIL_EXTRA_WAIT_MS = 2500
 GOTO_TIMEOUT_MS = 90_000
+CHECKPOINT_EVERY = 100  # 每 N 筆 flush 一次 CSV,避免長時間跑掛掉全沒
 
 def _now_ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -425,72 +426,101 @@ async def scrape_one_course(page: Page, url: str) -> dict[str, Any]:
     }
 
 
-async def run(semester: str | None, output_csv: Path, max_count: int) -> None:
+OUTPUT_COLS = [
+    "課名", "教師", "流水號", "課號", "課程識別碼", "必選修",
+    "開課系所", "上課時間", "上課地點", "加簽類別", "授課語言",
+    "學分", "修課人數上限", "課程概述", "課程目標", "課程要求",
+    "評量方式", "備註", "預期學習時數", "詳情頁URL",
+]
+
+
+def _load_done_urls(csv_path: Path) -> set[str]:
+    """既有 CSV 內已抓過的 detail URL,supports resume。"""
+    if not csv_path.exists():
+        return set()
+    try:
+        df = pd.read_csv(csv_path, dtype=str, usecols=["詳情頁URL"]).fillna("")
+        return {u for u in df["詳情頁URL"] if u}
+    except Exception:
+        return set()
+
+
+def _flush_rows(rows: list[dict], csv_path: Path) -> None:
+    """append-write 新 rows 進 csv;不存在則寫 header。"""
+    if not rows:
+        return
+    df = pd.DataFrame(rows)
+    df = df[[c for c in OUTPUT_COLS if c in df.columns]]
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    header = not csv_path.exists()
+    df.to_csv(csv_path, mode="a", index=False, header=header, encoding="utf-8-sig")
+
+
+async def run(
+    semester: str | None,
+    output_csv: Path,
+    max_count: int,
+    headless: bool,
+    slow_mo: int,
+) -> None:
     if semester:
         start_url = SEARCH_URL_TEMPLATE.format(semester=semester)
     else:
         start_url = DEFAULT_SEARCH_URL
     print(f"[{_now_ts()}] start_url = {start_url}")
     print(f"[{_now_ts()}] output_csv = {output_csv}")
+    print(f"[{_now_ts()}] headless = {headless}, slow_mo = {slow_mo}ms")
 
-    rows: list[dict[str, Any]] = []
+    done_urls = _load_done_urls(output_csv)
+    if done_urls:
+        print(f"[{_now_ts()}] resume: 既有 {len(done_urls)} 筆,會跳過")
+
+    buffer: list[dict[str, Any]] = []
+    total_written = 0
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False, slow_mo=200)
+        browser = await p.chromium.launch(headless=headless, slow_mo=slow_mo)
         context = await browser.new_context(locale="zh-TW")
         page = await context.new_page()
 
         urls = await collect_detail_urls(page, max_count, start_url)
 
         if not urls:
-            print(f"[{_now_ts()}] 未取得任何課程詳情連結（/courses/），請確認搜尋頁是否已載入列表。")
+            print(f"[{_now_ts()}] 未取得任何課程詳情連結(/courses/),請確認搜尋頁是否已載入列表。")
             await browser.close()
             return
 
+        # 過濾掉已抓過的
+        urls = [u for u in urls if u not in done_urls]
         total = len(urls)
+        print(f"[{_now_ts()}] 待抓 {total} 筆 (檢索到 {total + len(done_urls)} 個 URL,跳過 {len(done_urls)} 個)")
+
         for idx, u in enumerate(urls, start=1):
             try:
                 data = await scrape_one_course(page, u)
-                rows.append(data)
+                buffer.append(data)
                 name = data.get("課名", "")
                 sn = data.get("流水號", "")
-                print(f"[{_now_ts()}] [{idx}/{total}] 成功抓取：{name} ({sn})")
+                print(f"[{_now_ts()}] [{idx}/{total}] 成功抓取:{name} ({sn})")
             except Exception as e:
-                print(f"[{_now_ts()}] [{idx}/{total}] 跳過（錯誤）：{u} — {e!s}")
+                print(f"[{_now_ts()}] [{idx}/{total}] 跳過(錯誤):{u} — {e!s}")
                 continue
+
+            # 每 CHECKPOINT_EVERY 筆 flush 一次,長時間跑掛掉不會全沒
+            if len(buffer) >= CHECKPOINT_EVERY:
+                _flush_rows(buffer, output_csv)
+                total_written += len(buffer)
+                print(f"[{_now_ts()}] ★ checkpoint: 已寫入 {output_csv.name} (累計 {total_written} 筆)")
+                buffer.clear()
 
         await browser.close()
 
-    if rows:
-        df = pd.DataFrame(rows)
-        # 輸出欄位順序：核心欄位在前，URL 在後
-        cols = [
-            "課名",
-            "教師",
-            "流水號",
-            "課號",
-            "課程識別碼",
-            "必選修",
-            "開課系所",
-            "上課時間",
-            "上課地點",
-            "加簽類別",
-            "授課語言",
-            "學分",
-            "修課人數上限",
-            "課程概述",
-            "課程目標",
-            "課程要求",
-            "評量方式",
-            "備註",
-            "預期學習時數",
-            "詳情頁URL",
-        ]
-        df = df[[c for c in cols if c in df.columns]]
-        _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        df.to_csv(output_csv, index=False, encoding="utf-8-sig")
-        print(f"[{_now_ts()}] 已寫入 {output_csv}，共 {len(rows)} 筆。")
-    else:
-        print(f"[{_now_ts()}] 沒有任何成功資料，未寫入 CSV。")
+    # 收尾 flush
+    if buffer:
+        _flush_rows(buffer, output_csv)
+        total_written += len(buffer)
+
+    print(f"[{_now_ts()}] 完成。本次新增 {total_written} 筆 → {output_csv}")
 
 
 def _default_output_for(semester: str | None) -> Path:
@@ -509,10 +539,17 @@ def main() -> None:
                     help="輸出 CSV 路徑;省略 = ntu_detailed_data[_{semester}].csv")
     ap.add_argument("--max-count", type=int, default=DEFAULT_MAX_COUNT,
                     help=f"最多抓取筆數 (預設 {DEFAULT_MAX_COUNT})")
+    ap.add_argument("--show-browser", action="store_true",
+                    help="開瀏覽器視窗 (預設 headless,加這個 flag 才看得到)")
+    ap.add_argument("--slow-mo", type=int, default=0,
+                    help="Playwright slow_mo (ms),預設 0 (最快);debug 時可設 200")
     args = ap.parse_args()
 
     output = args.output or _default_output_for(args.semester)
-    asyncio.run(run(args.semester, output, args.max_count))
+    asyncio.run(run(
+        args.semester, output, args.max_count,
+        headless=not args.show_browser, slow_mo=args.slow_mo,
+    ))
 
 
 if __name__ == "__main__":
