@@ -116,6 +116,31 @@ class RecommendationItem(BaseModel):
     fit: FitBreakdown
 
 
+class TeacherStats(BaseModel):
+    n_courses: int
+    n_unique_codes: int
+    n_reviews: int
+    avg_recommendation: float | None
+    avg_sweetness: float | None
+    avg_workload: float | None
+
+
+class TeacherCourseItem(BaseModel):
+    serial_no: str
+    course_code: str
+    course_name: str
+    department: str
+    credits: str
+    n_offerings: int
+    n_reviews: int
+
+
+class TeacherDetail(BaseModel):
+    teacher: str
+    stats: TeacherStats
+    courses: list[TeacherCourseItem]
+
+
 # ---- User history ----
 
 

@@ -1017,6 +1017,98 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* 教師頁 (沿用 detail drawer) */
+        .teacher-link {
+            color: var(--active-blue);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--active-blue);
+        }
+
+        .teacher-link:hover {
+            background: #e3f2fd;
+        }
+
+        .teacher-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .teacher-stat {
+            background: #f8f9fa;
+            border: 1px solid #eaeaea;
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .ts-label {
+            font-size: 0.72rem;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .ts-val {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #333;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .ts-unit {
+            font-size: 0.7rem;
+            color: #aaa;
+            font-weight: normal;
+        }
+
+        .teacher-course-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #eaeaea;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .teacher-course-row:hover {
+            border-color: var(--active-blue);
+            background: #f8fbff;
+        }
+
+        .teacher-course-main {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .teacher-course-name {
+            font-weight: 600;
+            color: #222;
+            margin-bottom: 4px;
+        }
+
+        .teacher-course-code {
+            color: #888;
+            font-weight: normal;
+            font-size: 0.85rem;
+            margin-left: 4px;
+        }
+
+        .teacher-course-meta {
+            font-size: 0.8rem;
+            color: #777;
+        }
+
+        .teacher-course-rev {
+            font-size: 0.8rem;
+            color: var(--active-blue);
+            white-space: nowrap;
+        }
+
         /* 推薦理由說明文 (出現在推薦卡片底部 + 適合度分析列表底部) */
         .fit-explanation {
             margin-top: 10px;

@@ -39,6 +39,9 @@ from .schemas import (
     FitBreakdown,
     HistoryAdd,
     HistoryItem,
+    TeacherCourseItem,
+    TeacherDetail,
+    TeacherStats,
     LoginRequest,
     RecommendationItem,
     RegisterRequest,
@@ -187,6 +190,79 @@ def list_departments(
         """
     ).fetchall()
     return [r["department"] for r in rows]
+
+
+@app.get("/teachers/{name}", response_model=TeacherDetail)
+def get_teacher(
+    name: str,
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> TeacherDetail:
+    name = name.strip()
+    if not name:
+        raise HTTPException(400, "teacher name 不可空白")
+
+    # 一個 course_code 可能跨學期被同一教師開多次,以最新 (MAX(serial_no)) 為代表
+    courses = conn.execute(
+        """
+        SELECT
+            MAX(c.serial_no) AS serial_no,
+            c.course_code,
+            c.course_name,
+            c.department,
+            c.credits,
+            COUNT(*) AS n_offerings,
+            (SELECT COUNT(*) FROM reviews_structured r WHERE r.course_id = c.course_code) AS n_reviews
+        FROM courses c
+        WHERE c.teacher = ?
+        GROUP BY c.course_code
+        ORDER BY n_reviews DESC, c.course_code
+        """,
+        (name,),
+    ).fetchall()
+
+    if not courses:
+        raise HTTPException(404, f"teacher '{name}' not found")
+
+    course_codes = list({r["course_code"] for r in courses})
+    placeholders = ",".join("?" * len(course_codes))
+    agg = conn.execute(
+        f"""
+        SELECT
+            COUNT(*) AS n_reviews,
+            AVG(CAST(NULLIF(recommendation, '') AS REAL)) AS avg_rec,
+            AVG(CAST(NULLIF(sweetness, '')      AS REAL)) AS avg_sweet,
+            AVG(CAST(NULLIF(workload, '')       AS REAL)) AS avg_workload
+        FROM reviews_structured
+        WHERE course_id IN ({placeholders})
+        """,
+        course_codes,
+    ).fetchone()
+
+    stats = TeacherStats(
+        n_courses=sum(r["n_offerings"] for r in courses),
+        n_unique_codes=len(courses),
+        n_reviews=agg["n_reviews"] or 0,
+        avg_recommendation=round(agg["avg_rec"], 2) if agg["avg_rec"] is not None else None,
+        avg_sweetness=round(agg["avg_sweet"], 2) if agg["avg_sweet"] is not None else None,
+        avg_workload=round(agg["avg_workload"], 2) if agg["avg_workload"] is not None else None,
+    )
+
+    return TeacherDetail(
+        teacher=name,
+        stats=stats,
+        courses=[
+            TeacherCourseItem(
+                serial_no=r["serial_no"],
+                course_code=r["course_code"],
+                course_name=r["course_name"],
+                department=r["department"] or "",
+                credits=r["credits"] or "",
+                n_offerings=r["n_offerings"],
+                n_reviews=r["n_reviews"],
+            )
+            for r in courses
+        ],
+    )
 
 
 # =========================================================================

@@ -246,7 +246,7 @@ function renderResults(items) {
         <tr data-serial="${escapeAttr(c.serial_no)}">
             <td>${escapeHtml(c.course_code)}</td>
             <td>${escapeHtml(c.course_name)}</td>
-            <td>${escapeHtml(c.teacher)}</td>
+            <td><a href="#" class="teacher-link" data-teacher="${escapeAttr(c.teacher)}">${escapeHtml(c.teacher)}</a></td>
             <td>${escapeHtml(c.department)}</td>
             <td>${escapeHtml(c.credits)}</td>
             <td>${escapeHtml(c.schedule_time) || '—'}</td>
@@ -257,7 +257,7 @@ function renderResults(items) {
 
     els.resultsBody.querySelectorAll('tr').forEach(row => {
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.btn-add-history')) return;
+            if (e.target.closest('.btn-add-history') || e.target.closest('.teacher-link')) return;
             els.resultsBody.querySelectorAll('tr').forEach(r => r.classList.remove('active'));
             row.classList.add('active');
             openDrawer(row.dataset.serial);
@@ -302,6 +302,15 @@ const drawerTitle = document.getElementById('drawer-title');
 
 document.getElementById('drawer-close').addEventListener('click', closeDrawer);
 drawerOverlay.addEventListener('click', closeDrawer);
+
+// 事件委派:任何 .teacher-link 被點都進入教師抽屜模式
+document.addEventListener('click', (e) => {
+    const link = e.target.closest('.teacher-link');
+    if (!link) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openTeacherInDrawer(link.dataset.teacher);
+});
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeDrawer();
@@ -313,6 +322,63 @@ document.addEventListener('keydown', (e) => {
 function closeDrawer() {
     drawer.classList.remove('open');
     drawerOverlay.classList.remove('open');
+}
+
+// ==========================================================================
+// 抽屜:教師模式 (沿用 detail-drawer)
+// ==========================================================================
+async function openTeacherInDrawer(name) {
+    drawer.classList.add('open');
+    drawerOverlay.classList.add('open');
+    drawerTitle.textContent = '載入中…';
+    drawerBody.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入教師資料…</div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/teachers/${encodeURIComponent(name)}`);
+        if (!res.ok) throw new Error(`${res.status}`);
+        const d = await res.json();
+        drawerTitle.textContent = `教師:${d.teacher}`;
+        drawerBody.innerHTML = renderTeacherContent(d);
+        drawerBody.querySelectorAll('.teacher-course-row').forEach(row => {
+            row.addEventListener('click', () => openDrawer(row.dataset.serial));
+        });
+    } catch (err) {
+        console.error(err);
+        drawerBody.innerHTML = '<p class="drawer-empty">載入失敗</p>';
+    }
+}
+
+function renderTeacherContent(d) {
+    const s = d.stats;
+    const fmt = v => v == null ? '—' : v.toFixed(2);
+    const courses = d.courses.map(c => `
+        <div class="teacher-course-row" data-serial="${escapeAttr(c.serial_no)}">
+            <div class="teacher-course-main">
+                <div class="teacher-course-name">${escapeHtml(c.course_name)} <span class="teacher-course-code">${escapeHtml(c.course_code)}</span></div>
+                <div class="teacher-course-meta">${escapeHtml(c.department) || '—'} · ${escapeHtml(c.credits) || '?'} 學分 · 開過 ${c.n_offerings} 次</div>
+            </div>
+            <div class="teacher-course-rev">PTT ${c.n_reviews}</div>
+        </div>
+    `).join('');
+
+    return `
+        <div class="drawer-section">
+            <div class="course-name-big">${escapeHtml(d.teacher)}</div>
+            <div class="teacher-stats-grid">
+                <div class="teacher-stat"><div class="ts-label">開過課數</div><div class="ts-val">${s.n_courses}</div></div>
+                <div class="teacher-stat"><div class="ts-label">不同課號</div><div class="ts-val">${s.n_unique_codes}</div></div>
+                <div class="teacher-stat"><div class="ts-label">PTT 評價</div><div class="ts-val">${s.n_reviews}</div></div>
+                <div class="teacher-stat"><div class="ts-label">平均推薦</div><div class="ts-val">${fmt(s.avg_recommendation)} <span class="ts-unit">/5</span></div></div>
+                <div class="teacher-stat"><div class="ts-label">平均甜度</div><div class="ts-val">${fmt(s.avg_sweetness)} <span class="ts-unit">/5</span></div></div>
+                <div class="teacher-stat"><div class="ts-label">平均 loading</div><div class="ts-val">${fmt(s.avg_workload)} <span class="ts-unit">/5</span></div></div>
+            </div>
+        </div>
+
+        <div class="drawer-section">
+            <h3>所有開過的課 (${d.courses.length})</h3>
+            ${courses || '<p class="drawer-empty">沒有資料</p>'}
+        </div>
+    `;
 }
 
 async function openDrawer(serialNo) {
@@ -373,7 +439,7 @@ function renderDrawerContent(d, reviews) {
         <div class="drawer-section">
             <div class="course-name-big">${escapeHtml(d.course_name)}</div>
             <div class="course-meta-row"><strong>課號</strong> ${escapeHtml(d.course_code)}　|　<strong>流水號</strong> ${escapeHtml(d.serial_no)}</div>
-            <div class="course-meta-row"><strong>教師</strong> ${escapeHtml(d.teacher) || '—'}</div>
+            <div class="course-meta-row"><strong>教師</strong> ${d.teacher ? `<a href="#" class="teacher-link" data-teacher="${escapeAttr(d.teacher)}">${escapeHtml(d.teacher)}</a>` : '—'}</div>
             <div class="course-meta-row"><strong>系所</strong> ${escapeHtml(d.department) || '—'}</div>
             <div class="course-meta-row"><strong>學分</strong> ${escapeHtml(d.credits) || '—'}　|　<strong>必選修</strong> ${escapeHtml(d.req_type) || '—'}</div>
             <div class="course-meta-row"><strong>時間</strong> ${escapeHtml(d.schedule_time) || '—'}　|　<strong>地點</strong> ${escapeHtml(d.location) || '—'}</div>
