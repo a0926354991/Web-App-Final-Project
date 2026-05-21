@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import re
 from datetime import datetime
@@ -15,11 +16,11 @@ import pandas as pd
 from playwright.async_api import async_playwright, Page
 
 # --- 可調參數 ---
-max_count = 9899  # 要蒐集並抓取的課程詳情頁數量
-# 站方實際路由為 /zh-TW/search/...；課程詳情為 /courses/{學期}/{流水號}
-START_URL = "https://course.ntu.edu.tw/zh-TW/search/quick"
+DEFAULT_MAX_COUNT = 9899
+# 站方搜尋頁路由 (?s=114-1 切學期);課程詳情為 /courses/{學期}/{流水號}
+SEARCH_URL_TEMPLATE = "https://course.ntu.edu.tw/search/quick?s={semester}"
+DEFAULT_SEARCH_URL = "https://course.ntu.edu.tw/zh-TW/search/quick"  # 不指定 semester → 站方預設
 _DATA_DIR = Path(__file__).resolve().parent / "data"
-OUTPUT_CSV = _DATA_DIR / "ntu_detailed_data.csv"
 SCROLL_PAUSE_MS = 1800
 DETAIL_EXTRA_WAIT_MS = 2500
 GOTO_TIMEOUT_MS = 90_000
@@ -323,8 +324,8 @@ def _extract_sections(full_text: str) -> dict[str, str]:
     }
 
 
-async def collect_detail_urls(page: Page, need: int) -> list[str]:
-    await page.goto(START_URL, wait_until="networkidle", timeout=GOTO_TIMEOUT_MS)
+async def collect_detail_urls(page: Page, need: int, start_url: str) -> list[str]:
+    await page.goto(start_url, wait_until="networkidle", timeout=GOTO_TIMEOUT_MS)
     await page.wait_for_timeout(2000)
     base_url = page.url
     try:
@@ -424,14 +425,21 @@ async def scrape_one_course(page: Page, url: str) -> dict[str, Any]:
     }
 
 
-async def run() -> None:
+async def run(semester: str | None, output_csv: Path, max_count: int) -> None:
+    if semester:
+        start_url = SEARCH_URL_TEMPLATE.format(semester=semester)
+    else:
+        start_url = DEFAULT_SEARCH_URL
+    print(f"[{_now_ts()}] start_url = {start_url}")
+    print(f"[{_now_ts()}] output_csv = {output_csv}")
+
     rows: list[dict[str, Any]] = []
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=200)
         context = await browser.new_context(locale="zh-TW")
         page = await context.new_page()
 
-        urls = await collect_detail_urls(page, max_count)
+        urls = await collect_detail_urls(page, max_count, start_url)
 
         if not urls:
             print(f"[{_now_ts()}] 未取得任何課程詳情連結（/courses/），請確認搜尋頁是否已載入列表。")
@@ -479,11 +487,33 @@ async def run() -> None:
         ]
         df = df[[c for c in cols if c in df.columns]]
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        df.to_csv(OUTPUT_CSV, index=False, encoding="utf-8-sig")
-        print(f"[{_now_ts()}] 已寫入 {OUTPUT_CSV}，共 {len(rows)} 筆。")
+        df.to_csv(output_csv, index=False, encoding="utf-8-sig")
+        print(f"[{_now_ts()}] 已寫入 {output_csv}，共 {len(rows)} 筆。")
     else:
         print(f"[{_now_ts()}] 沒有任何成功資料，未寫入 CSV。")
 
 
+def _default_output_for(semester: str | None) -> Path:
+    if semester:
+        # 把 '114-1' 變成檔名安全的後綴
+        suffix = semester.replace("/", "_")
+        return _DATA_DIR / f"ntu_detailed_data_{suffix}.csv"
+    return _DATA_DIR / "ntu_detailed_data.csv"
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="台大課程網爬蟲")
+    ap.add_argument("--semester", default=None,
+                    help="學年期 (e.g. 114-1, 114-2);省略 = 站方預設(當前學期)")
+    ap.add_argument("--output", type=Path, default=None,
+                    help="輸出 CSV 路徑;省略 = ntu_detailed_data[_{semester}].csv")
+    ap.add_argument("--max-count", type=int, default=DEFAULT_MAX_COUNT,
+                    help=f"最多抓取筆數 (預設 {DEFAULT_MAX_COUNT})")
+    args = ap.parse_args()
+
+    output = args.output or _default_output_for(args.semester)
+    asyncio.run(run(args.semester, output, args.max_count))
+
+
 if __name__ == "__main__":
-    asyncio.run(run())
+    main()
