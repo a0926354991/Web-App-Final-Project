@@ -21,6 +21,9 @@
                     <div class="en-title">NTU Personalized Course Recommendation</div>
                 </div>
             </div>
+            <button class="theme-toggle" id="theme-toggle" title="切換深色 / 淺色">
+                <i class="fas fa-moon"></i>
+            </button>
             <div class="user-profile-header">
                 <img id="header-avatar" src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
                 <span id="header-username">未登入，請先登入</span>
@@ -118,6 +121,11 @@
                 <section class="view" id="view-discover" hidden>
                     <div class="dashboard-header">
                         <h1 class="dashboard-title">課程探索 <span class="dashboard-subtitle">Course Discovery</span></h1>
+                    </div>
+
+                    <div class="empty-banner" id="discover-logged-out-hint" hidden>
+                        <i class="fas fa-info-circle"></i>
+                        <a href="#" id="discover-login-link">登入</a>後可以看到每門課的個性化適合度跟推薦理由
                     </div>
 
                     <div class="filter-bar">

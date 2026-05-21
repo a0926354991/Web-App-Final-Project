@@ -15,6 +15,22 @@ function authHeaders() {
 }
 
 // ==========================================================================
+// Dark mode toggle (持久化到 localStorage)
+// ==========================================================================
+const THEME_KEY = 'ntu_app_theme';
+function applyTheme(name) {
+    document.body.classList.toggle('theme-dark', name === 'dark');
+    const icon = document.querySelector('#theme-toggle i');
+    if (icon) icon.className = name === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+}
+applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+document.getElementById('theme-toggle').addEventListener('click', () => {
+    const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+});
+
+// ==========================================================================
 // Sidebar 開關 (漢堡選單)
 // ==========================================================================
 function toggleSidebar() {
@@ -233,7 +249,10 @@ async function searchCourses({ keepParams = false } = {}) {
 
 function renderResults(items) {
     if (items.length === 0) {
-        els.resultsBody.innerHTML = '<tr><td colspan="7" class="empty-row">沒有符合條件的課程</td></tr>';
+        const hint = (els.searchInput.value || els.filterDept.value || els.filterCredits.value)
+            ? '<tr><td colspan="9" class="empty-row">沒有符合條件的課程 — 試試減少篩選或換個關鍵字</td></tr>'
+            : '<tr><td colspan="9" class="empty-row">沒有資料 — 確認後端有跑起來?</td></tr>';
+        els.resultsBody.innerHTML = hint;
         return;
     }
     els.resultsBody.innerHTML = items.map(c => {
@@ -474,6 +493,16 @@ document.addEventListener('click', (e) => {
     e.stopPropagation();
     openTeacherInDrawer(link.dataset.teacher);
 });
+
+// 「data-goto=tab」連結 → 切換到該 tab
+document.addEventListener('click', (e) => {
+    const link = e.target.closest('[data-goto]');
+    if (!link) return;
+    e.preventDefault();
+    const target = link.dataset.goto;
+    const item = document.querySelector(`.sidebar-item[data-target="${target}"]`);
+    if (item) item.click();
+});
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeDrawer();
@@ -706,6 +735,8 @@ function showAuthError(msg) {
 }
 
 authEls.btnLogin.addEventListener('click', (e) => { e.preventDefault(); openAuthModal('login'); });
+const discoverLoginLink = document.getElementById('discover-login-link');
+if (discoverLoginLink) discoverLoginLink.addEventListener('click', (e) => { e.preventDefault(); openAuthModal('login'); });
 authEls.btnLogout.addEventListener('click', (e) => { e.preventDefault(); doLogout(); });
 authEls.close.addEventListener('click', closeAuthModal);
 authEls.overlay.addEventListener('click', (e) => {
@@ -767,6 +798,11 @@ async function doLogout() {
     applyLoggedOutUI();
 }
 
+async function updateLoggedOutHints() {
+    const hint = document.getElementById('discover-logged-out-hint');
+    if (hint) hint.hidden = !!getToken();
+}
+
 async function applyLoggedInUI(user) {
     const name = user.username;
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=002D62&color=ffffff`;
@@ -779,6 +815,7 @@ async function applyLoggedInUI(user) {
     authEls.sidebarStatusText.textContent = '已登入 Online';
     authEls.btnLogin.hidden = true;
     authEls.btnLogout.hidden = false;
+    updateLoggedOutHints();
 
     const p = await loadProfile();
     if (p) updateRadarFromProfile(p);
@@ -805,6 +842,7 @@ function applyLoggedOutUI() {
     historyState.serialSet = new Set();
     historyState.loaded = false;
     loadDashboardRecommendations();
+    updateLoggedOutHints();
 }
 
 async function bootstrapAuth() {
@@ -1172,9 +1210,18 @@ async function loadDashboardRecommendations() {
             </div>`;
             return;
         }
-        listEl.innerHTML = items.map(it => `
+        // 偵測使用者沒填過 profile
+        const p = await loadProfile();
+        const noProfile = p && !p.updated_at;
+        const banner = noProfile
+            ? `<div class="empty-banner">
+                  <i class="fas fa-info-circle"></i>
+                  你還沒填個人偏好,推薦是預設的 —
+                  <a href="#" data-goto="userinfo">填一下偏好</a>會更準
+               </div>` : '';
+        listEl.innerHTML = banner + items.map(it => `
             <div class="course-card" data-serial="${escapeAttr(it.serial_no)}">
-                <div class="course-card-tag fit-tag">適合度 ${it.fit.total.toFixed(0)}%</div>
+                <div class="course-card-tag fit-tag">適合度 ${it.fit.total.toFixed(0)}%${lowSampleBadge(it.fit.n_reviews)}</div>
                 <div class="course-card-subtags">
                     <span class="tag">推薦 ${it.fit.recommendation.toFixed(0)}</span>
                     <span class="tag">甜 ${it.fit.sweetness.toFixed(0)}</span>
@@ -1257,11 +1304,17 @@ async function loadDrawerFit(serialNo) {
     }
 }
 
+function lowSampleBadge(n) {
+    if (n === 0) return ' <span class="low-sample-warn" title="無 PTT 評價,前 3 項分數用中性 50"><i class="fas fa-exclamation-circle"></i> 無評價</span>';
+    if (n <= 2) return ' <span class="low-sample-warn" title="PTT 樣本少,分數僅供參考"><i class="fas fa-exclamation-circle"></i> 樣本少</span>';
+    return '';
+}
+
 function renderFitBox(fit) {
     if (!fit) return '';
     return `
         <div class="drawer-fit-box">
-            <div class="drawer-fit-total">適合度 ${fit.total.toFixed(0)}%</div>
+            <div class="drawer-fit-total">適合度 ${fit.total.toFixed(0)}% ${lowSampleBadge(fit.n_reviews)}</div>
             ${fit.explanation ? `<div class="drawer-fit-why">${escapeHtml(fit.explanation)}</div>` : ''}
             <div class="drawer-fit-breakdown">
                 <span><strong>PTT 推薦</strong>${fit.recommendation.toFixed(0)}</span>
@@ -1271,7 +1324,6 @@ function renderFitBox(fit) {
                 <span><strong>能力匹配</strong>${fit.ability.toFixed(0)}</span>
                 <span><strong>PTT 樣本</strong>${fit.n_reviews} 篇</span>
             </div>
-            ${fit.n_reviews === 0 ? '<p style="font-size:0.78rem;color:#888;margin:6px 0 0 0">(無 PTT 評價,前 3 項用中性 50)</p>' : ''}
         </div>
     `;
 }
@@ -1292,7 +1344,14 @@ async function renderFitAnalysisView() {
     const summary = document.getElementById('fit-profile-summary');
     const p = await loadProfile();
     if (p) {
-        summary.innerHTML = `
+        const noProfile = !p.updated_at;
+        const banner = noProfile
+            ? `<div class="empty-banner" style="margin-bottom:14px">
+                  <i class="fas fa-info-circle"></i>
+                  你還沒填個人偏好 —
+                  <a href="#" data-goto="userinfo">先填寫</a>後分析結果才會準
+               </div>` : '';
+        summary.innerHTML = banner + `
             <div class="fit-summary-grid">
                 <div class="fit-summary-tile"><div class="tile-label">甜度偏好</div><div class="tile-value">${p.pref_sweetness}/100</div></div>
                 <div class="fit-summary-tile"><div class="tile-label">Loading 偏好</div><div class="tile-value">${p.pref_loading}/100</div></div>
@@ -1326,7 +1385,7 @@ async function renderFitAnalysisView() {
                     </div>
                     ${it.fit.explanation ? `<div class="fit-explanation">${escapeHtml(it.fit.explanation)}</div>` : ''}
                 </div>
-                <div class="fit-total-big">${it.fit.total.toFixed(0)}<span style="font-size:0.7em;color:#888">/100</span></div>
+                <div class="fit-total-big">${it.fit.total.toFixed(0)}<span style="font-size:0.7em;color:#888">/100</span>${lowSampleBadge(it.fit.n_reviews)}</div>
             </div>
         `).join('');
         listEl.querySelectorAll('.fit-list-item').forEach(el => {
