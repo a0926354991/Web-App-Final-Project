@@ -25,14 +25,17 @@ from .auth import (
     verify_password,
 )
 from .db import DB_PATH, get_conn
+from .recommendations import aggregate_course_stats, compute_fit, profile_row_to_dict
 from .schemas import (
     AuthResponse,
     CourseDetail,
     CourseListResponse,
     CourseSummary,
+    FitBreakdown,
     HistoryAdd,
     HistoryItem,
     LoginRequest,
+    RecommendationItem,
     RegisterRequest,
     ReviewListResponse,
     StructuredReview,
@@ -332,6 +335,145 @@ def update_my_profile(
         "SELECT * FROM user_profiles WHERE user_id = ?", (current["id"],)
     ).fetchone()
     return _row_to_profile(row)
+
+
+# =========================================================================
+# Recommendations / fit-score
+# =========================================================================
+
+
+def _load_profile_dict(conn: sqlite3.Connection, user_id: int) -> dict:
+    row = conn.execute(
+        "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    return profile_row_to_dict(row)
+
+
+@app.get("/me/recommendations", response_model=list[RecommendationItem])
+def my_recommendations(
+    limit: int = Query(5, ge=1, le=50),
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> list[RecommendationItem]:
+    profile = _load_profile_dict(conn, current["id"])
+    stats_map = aggregate_course_stats(conn)
+    if not stats_map:
+        return []
+
+    # 拿掉已修過的 course_code
+    taken_codes = {
+        r["course_code"]
+        for r in conn.execute(
+            """
+            SELECT DISTINCT c.course_code
+            FROM user_history h
+            JOIN courses c ON c.serial_no = h.serial_no
+            WHERE h.user_id = ?
+            """,
+            (current["id"],),
+        ).fetchall()
+    }
+
+    # 對每個有評價的 course_code, 挑一個代表 serial_no (最新的 = 流水號最大)
+    placeholders = ",".join("?" * len(stats_map))
+    reps = conn.execute(
+        f"""
+        SELECT course_code, MAX(serial_no) AS serial_no,
+               course_name, teacher, department, credits
+        FROM courses
+        WHERE course_code IN ({placeholders})
+        GROUP BY course_code
+        """,
+        list(stats_map.keys()),
+    ).fetchall()
+
+    scored: list[tuple[float, RecommendationItem]] = []
+    for r in reps:
+        code = r["course_code"]
+        if code in taken_codes:
+            continue
+        fit = compute_fit(profile, stats_map.get(code), r["course_name"], r["department"])
+        scored.append((
+            fit["total"],
+            RecommendationItem(
+                serial_no=r["serial_no"],
+                course_code=code,
+                course_name=r["course_name"],
+                teacher=r["teacher"] or "",
+                department=r["department"] or "",
+                credits=r["credits"] or "",
+                fit=FitBreakdown(**fit),
+            ),
+        ))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored[:limit]]
+
+
+@app.get("/me/fit/{serial_no}", response_model=FitBreakdown)
+def my_fit(
+    serial_no: str,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> FitBreakdown:
+    course = conn.execute(
+        "SELECT course_code, course_name, department FROM courses WHERE serial_no = ?",
+        (serial_no,),
+    ).fetchone()
+    if course is None:
+        raise HTTPException(404, f"course {serial_no} not found")
+
+    profile = _load_profile_dict(conn, current["id"])
+    stats = conn.execute(
+        """
+        SELECT
+            AVG(CAST(NULLIF(recommendation, '') AS REAL)) AS avg_rec,
+            AVG(CAST(NULLIF(sweetness, '')      AS REAL)) AS avg_sweet,
+            AVG(CAST(NULLIF(workload, '')       AS REAL)) AS avg_workload,
+            COUNT(*) AS n_reviews
+        FROM reviews_structured
+        WHERE course_id = ?
+        """,
+        (course["course_code"],),
+    ).fetchone()
+    stats_dict = dict(stats) if stats and stats["n_reviews"] > 0 else None
+
+    fit = compute_fit(profile, stats_dict, course["course_name"], course["department"])
+    return FitBreakdown(**fit)
+
+
+@app.post("/me/fits", response_model=dict[str, FitBreakdown])
+def my_fits_batch(
+    serial_nos: list[str],
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, FitBreakdown]:
+    """批次拿一組 serial_no 的 fit (供探索頁表格用)。"""
+    if not serial_nos:
+        return {}
+    placeholders = ",".join("?" * len(serial_nos))
+    rows = conn.execute(
+        f"""
+        SELECT serial_no, course_code, course_name, department
+        FROM courses
+        WHERE serial_no IN ({placeholders})
+        """,
+        serial_nos,
+    ).fetchall()
+
+    profile = _load_profile_dict(conn, current["id"])
+    stats_map = aggregate_course_stats(conn)
+
+    out: dict[str, FitBreakdown] = {}
+    for r in rows:
+        fit = compute_fit(
+            profile,
+            stats_map.get(r["course_code"]),
+            r["course_name"],
+            r["department"] or "",
+        )
+        out[r["serial_no"]] = FitBreakdown(**fit)
+    return out
 
 
 # =========================================================================

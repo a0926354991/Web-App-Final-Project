@@ -60,6 +60,9 @@ sidebarItems.forEach(item => {
         if (target === 'history') {
             renderHistoryView();
         }
+        if (target === 'fit') {
+            renderFitAnalysisView();
+        }
 
         if (window.innerWidth <= 992) {
             document.getElementById('sidebar').classList.remove('mobile-open');
@@ -218,6 +221,10 @@ async function searchCourses({ keepParams = false } = {}) {
         renderResults(data.items);
         renderMeta();
         renderPagination();
+        document.getElementById('fit-header').hidden = true;
+        if (getToken()) {
+            annotateResultsWithFit(data.items.map(c => c.serial_no));
+        }
     } catch (err) {
         console.error(err);
         els.resultsBody.innerHTML = '<tr><td colspan="6" class="empty-row">搜尋失敗，請確認 API server 是否啟動</td></tr>';
@@ -315,12 +322,13 @@ async function openDrawer(serialNo) {
     drawerBody.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入課程資料…</div>';
 
     try {
-        const [detail, reviewsResp] = await Promise.all([
+        const [detail, reviewsResp, fit] = await Promise.all([
             fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}`).then(r => r.json()),
             fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}/reviews`).then(r => r.json()),
+            loadDrawerFit(serialNo),
         ]);
         drawerTitle.textContent = detail.course_name;
-        drawerBody.innerHTML = renderDrawerContent(detail, reviewsResp.items);
+        drawerBody.innerHTML = renderFitBox(fit) + renderDrawerContent(detail, reviewsResp.items);
         const addBtn = document.getElementById('drawer-add-history-btn');
         if (addBtn) {
             addBtn.addEventListener('click', () => {
@@ -545,6 +553,7 @@ async function applyLoggedInUI(user) {
     const p = await loadProfile();
     if (p) updateRadarFromProfile(p);
     await loadHistory();
+    loadDashboardRecommendations();
 }
 
 function applyLoggedOutUI() {
@@ -565,6 +574,7 @@ function applyLoggedOutUI() {
     historyState.items = [];
     historyState.serialSet = new Set();
     historyState.loaded = false;
+    loadDashboardRecommendations();
 }
 
 async function bootstrapAuth() {
@@ -895,6 +905,201 @@ historyEls.form.addEventListener('submit', async (e) => {
         historyEls.submit.disabled = false;
     }
 });
+
+// ==========================================================================
+// 適合度 (fit analysis)
+// ==========================================================================
+function fitClass(score) {
+    if (score >= 75) return 'fit-high';
+    if (score >= 55) return 'fit-mid';
+    return 'fit-low';
+}
+
+function renderFitBadge(score) {
+    return `<span class="fit-badge ${fitClass(score)}">${score.toFixed(0)}</span>`;
+}
+
+// ---- Dashboard 「為您推薦」 ----
+async function loadDashboardRecommendations() {
+    const listEl = document.getElementById('dashboard-recommend-list');
+    if (!getToken()) {
+        listEl.innerHTML = `
+            <div class="course-card placeholder-mini">
+                <p style="color:#999;text-align:center;margin:20px 0">登入後顯示個性化推薦</p>
+            </div>`;
+        return;
+    }
+    listEl.innerHTML = `<div class="course-card placeholder-mini">
+        <p style="color:#999;text-align:center;margin:20px 0">載入中…</p>
+    </div>`;
+    try {
+        const items = await fetch(`${API_BASE}/me/recommendations?limit=5`, {
+            headers: authHeaders(),
+        }).then(r => r.ok ? r.json() : []);
+        if (items.length === 0) {
+            listEl.innerHTML = `<div class="course-card placeholder-mini">
+                <p style="color:#999;text-align:center;margin:20px 0">沒有可推薦的課程</p>
+            </div>`;
+            return;
+        }
+        listEl.innerHTML = items.map(it => `
+            <div class="course-card" data-serial="${escapeAttr(it.serial_no)}">
+                <div class="course-card-tag fit-tag">適合度 ${it.fit.total.toFixed(0)}%</div>
+                <div class="course-card-subtags">
+                    <span class="tag">推薦 ${it.fit.recommendation.toFixed(0)}</span>
+                    <span class="tag">甜 ${it.fit.sweetness.toFixed(0)}</span>
+                    <span class="tag">loading ${it.fit.loading.toFixed(0)}</span>
+                    ${it.fit.interest > 0 ? `<span class="tag">興趣 +${it.fit.interest.toFixed(0)}</span>` : ''}
+                </div>
+                <div class="course-card-details">
+                    <span><i class="fas fa-book"></i> ${escapeHtml(it.course_name)}</span>
+                    <span><i class="fas fa-user"></i> ${escapeHtml(it.teacher)}</span>
+                    <span><i class="fas fa-clock"></i> ${escapeHtml(it.credits)} 學分</span>
+                </div>
+            </div>
+        `).join('');
+        listEl.querySelectorAll('.course-card').forEach(card => {
+            card.addEventListener('click', () => openDrawer(card.dataset.serial));
+        });
+    } catch (err) {
+        console.warn('loadDashboardRecommendations failed', err);
+    }
+}
+
+// ---- 探索頁:批次拿 fit 分數,塞回表格 ----
+async function annotateResultsWithFit(serialNos) {
+    if (!getToken() || serialNos.length === 0) return;
+    try {
+        const fits = await fetch(`${API_BASE}/me/fits`, {
+            method: 'POST',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(serialNos),
+        }).then(r => r.ok ? r.json() : {});
+        document.getElementById('fit-header').hidden = false;
+        els.resultsBody.querySelectorAll('tr').forEach(row => {
+            const s = row.dataset.serial;
+            if (!s) return;
+            const f = fits[s];
+            if (!f) return;
+            // 找到 actions cell 前一格插入
+            const actionCell = row.querySelector('.action-cell');
+            const cell = document.createElement('td');
+            cell.dataset.fit = f.total;
+            cell.innerHTML = renderFitBadge(f.total);
+            row.insertBefore(cell, actionCell);
+        });
+        // 預設按 fit 降序排
+        sortResultsByFit();
+    } catch (err) {
+        console.warn('annotateResultsWithFit failed', err);
+    }
+}
+
+let resultsSortDirection = 'desc';
+function sortResultsByFit() {
+    const rows = [...els.resultsBody.querySelectorAll('tr[data-serial]')];
+    rows.sort((a, b) => {
+        const av = Number(a.querySelector('[data-fit]')?.dataset.fit ?? -1);
+        const bv = Number(b.querySelector('[data-fit]')?.dataset.fit ?? -1);
+        return resultsSortDirection === 'desc' ? bv - av : av - bv;
+    });
+    rows.forEach(r => els.resultsBody.appendChild(r));
+}
+
+document.getElementById('fit-header').addEventListener('click', () => {
+    resultsSortDirection = resultsSortDirection === 'desc' ? 'asc' : 'desc';
+    sortResultsByFit();
+});
+
+// ---- Drawer 內的 fit 顯示 ----
+async function loadDrawerFit(serialNo) {
+    if (!getToken()) return null;
+    try {
+        const res = await fetch(`${API_BASE}/me/fit/${encodeURIComponent(serialNo)}`, {
+            headers: authHeaders(),
+        });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (err) {
+        return null;
+    }
+}
+
+function renderFitBox(fit) {
+    if (!fit) return '';
+    return `
+        <div class="drawer-fit-box">
+            <div class="drawer-fit-total">適合度 ${fit.total.toFixed(0)}%</div>
+            <div class="drawer-fit-breakdown">
+                <span><strong>PTT 推薦</strong>${fit.recommendation.toFixed(0)}</span>
+                <span><strong>甜度匹配</strong>${fit.sweetness.toFixed(0)}</span>
+                <span><strong>Loading 匹配</strong>${fit.loading.toFixed(0)}</span>
+                <span><strong>興趣命中</strong>${fit.interest.toFixed(0)}</span>
+            </div>
+            ${fit.n_reviews === 0 ? '<p style="font-size:0.78rem;color:#888;margin:6px 0 0 0">(無 PTT 評價,分數來自興趣命中)</p>' : ''}
+        </div>
+    `;
+}
+
+// ---- 適合度分析 tab ----
+async function renderFitAnalysisView() {
+    const needLogin = document.getElementById('fit-need-login');
+    const content = document.getElementById('fit-content');
+    if (!getToken()) {
+        content.hidden = true;
+        needLogin.hidden = false;
+        return;
+    }
+    needLogin.hidden = true;
+    content.hidden = false;
+
+    // 偏好摘要
+    const summary = document.getElementById('fit-profile-summary');
+    const p = await loadProfile();
+    if (p) {
+        summary.innerHTML = `
+            <div class="fit-summary-grid">
+                <div class="fit-summary-tile"><div class="tile-label">甜度偏好</div><div class="tile-value">${p.pref_sweetness}/100</div></div>
+                <div class="fit-summary-tile"><div class="tile-label">Loading 偏好</div><div class="tile-value">${p.pref_loading}/100</div></div>
+                <div class="fit-summary-tile"><div class="tile-label">興趣領域</div><div class="tile-value">${p.interests.length > 0 ? p.interests.map(escapeHtml).join('、') : '未填'}</div></div>
+            </div>`;
+    }
+
+    // Top 20 推薦
+    const listEl = document.getElementById('fit-list');
+    listEl.innerHTML = '載入中…';
+    try {
+        const items = await fetch(`${API_BASE}/me/recommendations?limit=20`, {
+            headers: authHeaders(),
+        }).then(r => r.ok ? r.json() : []);
+        if (items.length === 0) {
+            listEl.innerHTML = '<p style="color:#999">沒有可推薦的課程</p>';
+            return;
+        }
+        listEl.innerHTML = items.map((it, i) => `
+            <div class="fit-list-item" data-serial="${escapeAttr(it.serial_no)}">
+                <div class="fit-rank">#${i + 1}</div>
+                <div class="fit-item-main">
+                    <div class="fit-item-title">${escapeHtml(it.course_name)} <span style="color:#888;font-weight:normal;font-size:0.85rem">${escapeHtml(it.course_code)}</span></div>
+                    <div class="fit-item-meta">${escapeHtml(it.teacher)} · ${escapeHtml(it.credits)} 學分 · PTT ${it.fit.n_reviews} 篇評價</div>
+                    <div class="fit-bars">
+                        <span class="fit-bar-pill">推薦 <strong>${it.fit.recommendation.toFixed(0)}</strong></span>
+                        <span class="fit-bar-pill">甜 <strong>${it.fit.sweetness.toFixed(0)}</strong></span>
+                        <span class="fit-bar-pill">loading <strong>${it.fit.loading.toFixed(0)}</strong></span>
+                        <span class="fit-bar-pill">興趣 <strong>${it.fit.interest.toFixed(0)}</strong></span>
+                    </div>
+                </div>
+                <div class="fit-total-big">${it.fit.total.toFixed(0)}<span style="font-size:0.7em;color:#888">/100</span></div>
+            </div>
+        `).join('');
+        listEl.querySelectorAll('.fit-list-item').forEach(el => {
+            el.addEventListener('click', () => openDrawer(el.dataset.serial));
+        });
+    } catch (err) {
+        console.error(err);
+        listEl.innerHTML = '<p style="color:#df3d31">載入失敗</p>';
+    }
+}
 
 // ==========================================================================
 // 小工具:防 XSS

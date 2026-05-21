@@ -90,7 +90,26 @@ class UserInfo(BaseModel):
 AuthResponse.model_rebuild()
 
 
-# ---- User profile ----
+# ---- Recommendations / fit ----
+
+
+class FitBreakdown(BaseModel):
+    total: float
+    recommendation: float
+    sweetness: float
+    loading: float
+    interest: float
+    n_reviews: int
+
+
+class RecommendationItem(BaseModel):
+    serial_no: str
+    course_code: str
+    course_name: str
+    teacher: str
+    department: str
+    credits: str
+    fit: FitBreakdown
 
 
 # ---- User history ----

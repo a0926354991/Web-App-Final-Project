@@ -891,6 +891,161 @@
         }
 
         /* =========================================
+           適合度 (Fit Analysis)
+           ========================================= */
+
+        .fit-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 48px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .fit-badge.fit-high   { background: #e8f5e9; color: #2e7d32; }
+        .fit-badge.fit-mid    { background: #fff8e1; color: #ef6c00; }
+        .fit-badge.fit-low    { background: #f5f5f5; color: #757575; }
+
+        .results-table th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .results-table th.sortable:hover {
+            color: var(--active-blue);
+        }
+
+        /* dashboard 推薦卡片的「適合度」標籤 */
+        .course-card-tag.fit-tag {
+            background: linear-gradient(90deg, var(--active-blue), #1976D2);
+        }
+
+        /* 適合度分析 tab */
+        .fit-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .fit-summary-tile {
+            background: #f8f9fa;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border: 1px solid #eaeaea;
+        }
+
+        .fit-summary-tile .tile-label {
+            font-size: 0.78rem;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .fit-summary-tile .tile-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .fit-list-item {
+            background: white;
+            border: 1px solid #eaeaea;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 10px;
+            display: grid;
+            grid-template-columns: 60px 1fr auto;
+            align-items: center;
+            gap: 16px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .fit-list-item:hover {
+            border-color: var(--active-blue);
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
+        }
+
+        .fit-rank {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #bbb;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .fit-item-main {
+            min-width: 0;
+        }
+
+        .fit-item-title {
+            font-weight: 600;
+            color: #222;
+            margin-bottom: 4px;
+        }
+
+        .fit-item-meta {
+            font-size: 0.82rem;
+            color: #777;
+            margin-bottom: 8px;
+        }
+
+        .fit-bars {
+            display: flex;
+            gap: 6px;
+            font-size: 0.7rem;
+        }
+
+        .fit-bar-pill {
+            background: #f0f2f5;
+            padding: 2px 8px;
+            border-radius: 8px;
+            color: #555;
+        }
+
+        .fit-bar-pill strong {
+            color: var(--active-blue);
+        }
+
+        .fit-total-big {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--active-blue);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* 抽屜內的 fit 分數區塊 */
+        .drawer-fit-box {
+            background: linear-gradient(135deg, #e3f2fd, #fff);
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 18px;
+        }
+
+        .drawer-fit-total {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--active-blue);
+            margin-bottom: 6px;
+        }
+
+        .drawer-fit-breakdown {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            font-size: 0.82rem;
+            color: #555;
+        }
+
+        .drawer-fit-breakdown span strong {
+            color: #333;
+        }
+
+        /* =========================================
            History (修課歷史)
            ========================================= */
 

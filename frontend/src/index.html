@@ -105,42 +105,9 @@
                             <div class="card-header">
                                 <h2 class="card-title">為您推薦 <span class="en">Recommended</span></h2>
                             </div>
-                            <div class="course-list">
-                                <div class="course-card">
-                                    <div class="course-card-tag"><i class="fas fa-star" style="color:#FFD700"></i> 極度推薦</div>
-                                    <div class="course-card-subtags">
-                                        <span class="tag">#給分甜</span>
-                                        <span class="tag">#期末報告</span>
-                                        <span class="tag">#不點名</span>
-                                        <span class="tag">#NLP</span>
-                                    </div>
-                                    <div class="course-card-details">
-                                        <span><i class="fas fa-book"></i> 自然語言處理</span>
-                                        <span><i class="fas fa-clock"></i> 3 學分</span>
-                                    </div>
-                                </div>
-                                <div class="course-card">
-                                    <div class="course-card-tag">適合度 85%</div>
-                                    <div class="course-card-subtags">
-                                        <span class="tag">#邏輯訓練</span>
-                                        <span class="tag">#作業偏難</span>
-                                        <span class="tag">#扎實</span>
-                                    </div>
-                                    <div class="course-card-details">
-                                        <span><i class="fas fa-book"></i> 資料結構與演算法</span>
-                                        <span><i class="fas fa-clock"></i> 3 學分</span>
-                                    </div>
-                                </div>
-                                <div class="course-card">
-                                    <div class="course-card-tag">填補空堂</div>
-                                    <div class="course-card-subtags">
-                                        <span class="tag">#輕鬆聽講</span>
-                                        <span class="tag">#無期中考</span>
-                                    </div>
-                                    <div class="course-card-details">
-                                        <span><i class="fas fa-book"></i> 藝術史導論</span>
-                                        <span><i class="fas fa-clock"></i> 2 學分</span>
-                                    </div>
+                            <div class="course-list" id="dashboard-recommend-list">
+                                <div class="course-card placeholder-mini">
+                                    <p style="color:#999;text-align:center;margin:20px 0">登入後顯示個性化推薦</p>
                                 </div>
                             </div>
                         </div>
@@ -186,11 +153,12 @@
                                     <th>系所</th>
                                     <th>學分</th>
                                     <th>時間</th>
+                                    <th id="fit-header" class="sortable" hidden>適合度 <i class="fas fa-sort"></i></th>
                                     <th class="action-cell"></th>
                                 </tr>
                             </thead>
                             <tbody id="results-body">
-                                <tr><td colspan="7" class="empty-row">點「套用篩選」開始搜尋課程</td></tr>
+                                <tr><td colspan="8" class="empty-row">點「套用篩選」開始搜尋課程</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -283,14 +251,38 @@
                     </div>
                 </section>
 
-                <!-- ===== View: 適合度分析 (placeholder) ===== -->
+                <!-- ===== View: 適合度分析 ===== -->
                 <section class="view" id="view-fit" hidden>
                     <div class="dashboard-header">
                         <h1 class="dashboard-title">個性化適合度分析 <span class="dashboard-subtitle">Fit Analysis</span></h1>
                     </div>
-                    <div class="card placeholder-card">
-                        <i class="fas fa-tools"></i>
-                        <p>此頁面尚未實作。</p>
+
+                    <div id="fit-need-login" class="card placeholder-card" hidden>
+                        <i class="fas fa-lock"></i>
+                        <p>請先登入才能查看個性化分析。</p>
+                    </div>
+
+                    <div id="fit-content" hidden>
+                        <div class="card profile-section">
+                            <div class="card-header">
+                                <h2 class="card-title">你的偏好摘要 <span class="en">Preference Summary</span></h2>
+                            </div>
+                            <div id="fit-profile-summary"></div>
+                            <p class="profile-hint" style="margin-top:14px">
+                                適合度演算法成份:
+                                <strong>PTT 推薦 30%</strong> +
+                                <strong>甜度匹配 25%</strong> +
+                                <strong>Loading 匹配 25%</strong> +
+                                <strong>興趣命中 20%</strong>
+                            </p>
+                        </div>
+
+                        <div class="card profile-section" style="margin-top:20px">
+                            <div class="card-header">
+                                <h2 class="card-title">Top 20 推薦 <span class="en">Top Recommendations</span></h2>
+                            </div>
+                            <div id="fit-list">載入中…</div>
+                        </div>
                     </div>
                 </section>
             </main>
