@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CourseSummary(BaseModel):
@@ -88,3 +88,18 @@ class UserInfo(BaseModel):
 
 
 AuthResponse.model_rebuild()
+
+
+# ---- User profile ----
+
+
+class UserProfile(BaseModel):
+    ability_logic: int = Field(50, ge=0, le=100)
+    ability_writing: int = Field(50, ge=0, le=100)
+    ability_coding: int = Field(50, ge=0, le=100)
+    ability_humanities: int = Field(50, ge=0, le=100)
+    ability_teamwork: int = Field(50, ge=0, le=100)
+    pref_sweetness: int = Field(50, ge=0, le=100)
+    pref_loading: int = Field(50, ge=0, le=100)
+    interests: list[str] = Field(default_factory=list)
+    updated_at: str | None = None

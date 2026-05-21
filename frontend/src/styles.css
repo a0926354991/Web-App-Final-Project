@@ -789,6 +789,108 @@
         }
 
         /* =========================================
+           使用者資訊輸入頁 (Profile Form)
+           ========================================= */
+
+        .profile-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 720px;
+        }
+
+        .profile-section {
+            padding: 24px;
+        }
+
+        .profile-hint {
+            color: #777;
+            font-size: 0.85rem;
+            margin: 0 0 16px 0;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .slider-row {
+            display: grid;
+            grid-template-columns: 130px 1fr 50px;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .slider-row label {
+            font-size: 0.92rem;
+            color: #333;
+        }
+
+        .slider-row input[type="range"] {
+            width: 100%;
+            accent-color: var(--active-blue);
+        }
+
+        .slider-value {
+            text-align: right;
+            font-weight: 600;
+            color: var(--active-blue);
+            font-size: 0.95rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .interest-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .interest-tag {
+            padding: 6px 14px;
+            border: 1px solid #ddd;
+            border-radius: 16px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            background: white;
+            color: #555;
+            transition: all 0.15s;
+            user-select: none;
+        }
+
+        .interest-tag:hover {
+            border-color: var(--active-blue);
+            color: var(--active-blue);
+        }
+
+        .interest-tag.selected {
+            background: var(--active-blue);
+            color: white;
+            border-color: var(--active-blue);
+        }
+
+        .profile-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding-top: 8px;
+        }
+
+        .profile-saved {
+            color: #2e7d32;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        @media (max-width: 600px) {
+            .slider-row {
+                grid-template-columns: 100px 1fr 40px;
+            }
+        }
+
+        /* =========================================
            Auth Modal (登入 / 註冊)
            ========================================= */
 

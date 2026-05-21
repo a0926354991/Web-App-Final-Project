@@ -35,6 +35,7 @@ from .schemas import (
     ReviewListResponse,
     StructuredReview,
     UserInfo,
+    UserProfile,
 )
 
 
@@ -254,3 +255,78 @@ def logout(
 @app.get("/auth/me", response_model=UserInfo)
 def me(current: sqlite3.Row = Depends(get_current_user)) -> UserInfo:
     return _row_to_user_info(current)
+
+
+# =========================================================================
+# User profile (能力值 + 偏好)
+# =========================================================================
+
+import json as _json
+
+
+def _row_to_profile(row: sqlite3.Row) -> UserProfile:
+    return UserProfile(
+        ability_logic=row["ability_logic"],
+        ability_writing=row["ability_writing"],
+        ability_coding=row["ability_coding"],
+        ability_humanities=row["ability_humanities"],
+        ability_teamwork=row["ability_teamwork"],
+        pref_sweetness=row["pref_sweetness"],
+        pref_loading=row["pref_loading"],
+        interests=_json.loads(row["interests"]),
+        updated_at=row["updated_at"],
+    )
+
+
+@app.get("/me/profile", response_model=UserProfile)
+def get_my_profile(
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> UserProfile:
+    row = conn.execute(
+        "SELECT * FROM user_profiles WHERE user_id = ?", (current["id"],)
+    ).fetchone()
+    if row is None:
+        # 第一次拿:回傳預設值(沒寫入 DB 直到使用者按存檔)
+        return UserProfile()
+    return _row_to_profile(row)
+
+
+@app.put("/me/profile", response_model=UserProfile)
+def update_my_profile(
+    body: UserProfile,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> UserProfile:
+    interests_json = _json.dumps(body.interests, ensure_ascii=False)
+    conn.execute(
+        """
+        INSERT INTO user_profiles (
+            user_id, ability_logic, ability_writing, ability_coding,
+            ability_humanities, ability_teamwork,
+            pref_sweetness, pref_loading, interests, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+            ability_logic = excluded.ability_logic,
+            ability_writing = excluded.ability_writing,
+            ability_coding = excluded.ability_coding,
+            ability_humanities = excluded.ability_humanities,
+            ability_teamwork = excluded.ability_teamwork,
+            pref_sweetness = excluded.pref_sweetness,
+            pref_loading = excluded.pref_loading,
+            interests = excluded.interests,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            current["id"],
+            body.ability_logic, body.ability_writing, body.ability_coding,
+            body.ability_humanities, body.ability_teamwork,
+            body.pref_sweetness, body.pref_loading, interests_json,
+        ),
+    )
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT * FROM user_profiles WHERE user_id = ?", (current["id"],)
+    ).fetchone()
+    return _row_to_profile(row)

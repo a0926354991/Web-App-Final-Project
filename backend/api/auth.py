@@ -56,6 +56,20 @@ def init_auth_tables(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            user_id            INTEGER PRIMARY KEY,
+            ability_logic      INTEGER NOT NULL DEFAULT 50,
+            ability_writing    INTEGER NOT NULL DEFAULT 50,
+            ability_coding     INTEGER NOT NULL DEFAULT 50,
+            ability_humanities INTEGER NOT NULL DEFAULT 50,
+            ability_teamwork   INTEGER NOT NULL DEFAULT 50,
+            pref_sweetness     INTEGER NOT NULL DEFAULT 50,
+            pref_loading       INTEGER NOT NULL DEFAULT 50,
+            interests          TEXT NOT NULL DEFAULT '[]',
+            updated_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
         """
     )
     conn.commit()

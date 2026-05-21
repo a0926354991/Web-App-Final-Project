@@ -201,15 +201,50 @@
                     </div>
                 </section>
 
-                <!-- ===== View: 使用者資訊 (placeholder) ===== -->
+                <!-- ===== View: 使用者資訊 ===== -->
                 <section class="view" id="view-userinfo" hidden>
                     <div class="dashboard-header">
                         <h1 class="dashboard-title">使用者資訊輸入 <span class="dashboard-subtitle">User Info Input</span></h1>
                     </div>
-                    <div class="card placeholder-card">
-                        <i class="fas fa-tools"></i>
-                        <p>此頁面尚未實作。</p>
+
+                    <div id="profile-need-login" class="card placeholder-card" hidden>
+                        <i class="fas fa-lock"></i>
+                        <p>請先登入才能填寫個人資訊。</p>
                     </div>
+
+                    <form id="profile-form" class="profile-form" hidden>
+                        <div class="card profile-section">
+                            <div class="card-header">
+                                <h2 class="card-title">能力值 <span class="en">Abilities</span></h2>
+                            </div>
+                            <p class="profile-hint">拉動下方滑桿,評估你在這 5 個面向的能力(0–100)</p>
+                            <div class="slider-group" id="ability-group"></div>
+                        </div>
+
+                        <div class="card profile-section">
+                            <div class="card-header">
+                                <h2 class="card-title">課程偏好 <span class="en">Preferences</span></h2>
+                            </div>
+                            <div class="slider-group" id="pref-group"></div>
+                        </div>
+
+                        <div class="card profile-section">
+                            <div class="card-header">
+                                <h2 class="card-title">興趣領域 <span class="en">Interests</span></h2>
+                            </div>
+                            <p class="profile-hint">可複選 - 推薦時會優先考慮這些領域</p>
+                            <div class="interest-tags" id="interest-tags"></div>
+                        </div>
+
+                        <div class="profile-actions">
+                            <button type="submit" class="btn-primary" id="profile-save">
+                                <i class="fas fa-save"></i> 儲存
+                            </button>
+                            <span class="profile-saved" id="profile-saved" hidden>
+                                <i class="fas fa-check-circle"></i> 已儲存
+                            </span>
+                        </div>
+                    </form>
                 </section>
 
                 <!-- ===== View: 修課歷史 (placeholder) ===== -->

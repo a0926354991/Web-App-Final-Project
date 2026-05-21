@@ -54,6 +54,9 @@ sidebarItems.forEach(item => {
         if (target === 'discover' && !discoverState.initialized) {
             initDiscoverView();
         }
+        if (target === 'userinfo') {
+            renderProfileView();
+        }
 
         if (window.innerWidth <= 992) {
             document.getElementById('sidebar').classList.remove('mobile-open');
@@ -62,16 +65,19 @@ sidebarItems.forEach(item => {
 });
 
 // ==========================================================================
-// 儀表板雷達圖 (dashboard) — 沿用原本寫死的能力值
+// 儀表板雷達圖 (dashboard) — 預設值,登入後會由 profile 覆寫
 // ==========================================================================
-const ctx = document.getElementById('radarChart').getContext('2d');
-new Chart(ctx, {
+const DEFAULT_ABILITIES = [50, 50, 50, 50, 50];
+const ABILITY_LABELS = ['數理邏輯', '文字表達', '程式實作', '人文素養', '團隊協作'];
+
+const radarCtx = document.getElementById('radarChart').getContext('2d');
+const radarChart = new Chart(radarCtx, {
     type: 'radar',
     data: {
-        labels: ['數理邏輯', '文字表達', '程式實作', '人文素養', '團隊協作'],
+        labels: ABILITY_LABELS,
         datasets: [{
             label: '目前能力值',
-            data: [85, 65, 90, 50, 75],
+            data: DEFAULT_ABILITIES,
             backgroundColor: 'rgba(33, 150, 243, 0.2)',
             borderColor: 'rgba(33, 150, 243, 1)',
             borderWidth: 2,
@@ -103,6 +109,17 @@ new Chart(ctx, {
         },
     },
 });
+
+function updateRadarFromProfile(p) {
+    radarChart.data.datasets[0].data = [
+        p.ability_logic,
+        p.ability_writing,
+        p.ability_coding,
+        p.ability_humanities,
+        p.ability_teamwork,
+    ];
+    radarChart.update();
+}
 
 // ==========================================================================
 // 課程探索 (course discovery)
@@ -476,7 +493,7 @@ async function doLogout() {
     applyLoggedOutUI();
 }
 
-function applyLoggedInUI(user) {
+async function applyLoggedInUI(user) {
     const name = user.username;
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=002D62&color=ffffff`;
     authEls.headerAvatar.src = avatarUrl;
@@ -488,6 +505,9 @@ function applyLoggedInUI(user) {
     authEls.sidebarStatusText.textContent = '已登入 Online';
     authEls.btnLogin.hidden = true;
     authEls.btnLogout.hidden = false;
+
+    const p = await loadProfile();
+    if (p) updateRadarFromProfile(p);
 }
 
 function applyLoggedOutUI() {
@@ -501,6 +521,10 @@ function applyLoggedOutUI() {
     authEls.sidebarStatusText.textContent = '等待登入 Waiting for login';
     authEls.btnLogin.hidden = false;
     authEls.btnLogout.hidden = true;
+
+    radarChart.data.datasets[0].data = DEFAULT_ABILITIES;
+    radarChart.update();
+    profileState.loaded = false;
 }
 
 async function bootstrapAuth() {
@@ -525,6 +549,143 @@ async function bootstrapAuth() {
 }
 
 bootstrapAuth();
+
+// ==========================================================================
+// 使用者資訊輸入頁 (profile)
+// ==========================================================================
+const ABILITY_FIELDS = [
+    { key: 'ability_logic', label: '數理邏輯' },
+    { key: 'ability_writing', label: '文字表達' },
+    { key: 'ability_coding', label: '程式實作' },
+    { key: 'ability_humanities', label: '人文素養' },
+    { key: 'ability_teamwork', label: '團隊協作' },
+];
+const PREF_FIELDS = [
+    { key: 'pref_sweetness', label: '甜度偏好', hint: '高 = 重視給分甜' },
+    { key: 'pref_loading', label: 'loading 偏好', hint: '高 = 喜歡扎實' },
+];
+const INTEREST_OPTIONS = [
+    'AI', '程式', '金融', '商管', '設計', '人文', '語言',
+    '自然科學', '社會科學', '醫學', '法律', '體育', '藝術',
+];
+
+const profileEls = {
+    form: document.getElementById('profile-form'),
+    needLogin: document.getElementById('profile-need-login'),
+    abilityGroup: document.getElementById('ability-group'),
+    prefGroup: document.getElementById('pref-group'),
+    interestTags: document.getElementById('interest-tags'),
+    save: document.getElementById('profile-save'),
+    saved: document.getElementById('profile-saved'),
+};
+
+let profileState = {
+    loaded: false,
+    selectedInterests: new Set(),
+};
+
+function buildSliderRow(field, value, hint) {
+    const row = document.createElement('div');
+    row.className = 'slider-row';
+    row.innerHTML = `
+        <label for="slider-${field.key}">${field.label}${hint ? `<br><span style="font-size:0.75rem;color:#888">${hint}</span>` : ''}</label>
+        <input type="range" id="slider-${field.key}" name="${field.key}" min="0" max="100" value="${value}">
+        <span class="slider-value" id="value-${field.key}">${value}</span>
+    `;
+    const input = row.querySelector('input');
+    const valSpan = row.querySelector('.slider-value');
+    input.addEventListener('input', () => { valSpan.textContent = input.value; });
+    return row;
+}
+
+function buildInterestTags(selected) {
+    profileEls.interestTags.innerHTML = '';
+    profileState.selectedInterests = new Set(selected);
+    INTEREST_OPTIONS.forEach(name => {
+        const tag = document.createElement('span');
+        tag.className = 'interest-tag' + (profileState.selectedInterests.has(name) ? ' selected' : '');
+        tag.textContent = name;
+        tag.addEventListener('click', () => {
+            if (profileState.selectedInterests.has(name)) {
+                profileState.selectedInterests.delete(name);
+                tag.classList.remove('selected');
+            } else {
+                profileState.selectedInterests.add(name);
+                tag.classList.add('selected');
+            }
+        });
+        profileEls.interestTags.appendChild(tag);
+    });
+}
+
+function renderProfileForm(profile) {
+    profileEls.abilityGroup.innerHTML = '';
+    ABILITY_FIELDS.forEach(f => {
+        profileEls.abilityGroup.appendChild(buildSliderRow(f, profile[f.key]));
+    });
+    profileEls.prefGroup.innerHTML = '';
+    PREF_FIELDS.forEach(f => {
+        profileEls.prefGroup.appendChild(buildSliderRow(f, profile[f.key], f.hint));
+    });
+    buildInterestTags(profile.interests || []);
+    profileState.loaded = true;
+}
+
+async function loadProfile() {
+    if (!getToken()) return null;
+    try {
+        const res = await fetch(`${API_BASE}/me/profile`, { headers: authHeaders() });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (err) {
+        console.warn('loadProfile failed', err);
+        return null;
+    }
+}
+
+async function renderProfileView() {
+    if (!getToken()) {
+        profileEls.form.hidden = true;
+        profileEls.needLogin.hidden = false;
+        return;
+    }
+    profileEls.needLogin.hidden = true;
+    profileEls.form.hidden = false;
+    if (!profileState.loaded) {
+        const p = await loadProfile();
+        if (p) renderProfileForm(p);
+    }
+}
+
+profileEls.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!getToken()) return;
+
+    const body = { interests: [...profileState.selectedInterests] };
+    [...ABILITY_FIELDS, ...PREF_FIELDS].forEach(f => {
+        body[f.key] = Number(document.getElementById(`slider-${f.key}`).value);
+    });
+
+    profileEls.save.disabled = true;
+    profileEls.saved.hidden = true;
+    try {
+        const res = await fetch(`${API_BASE}/me/profile`, {
+            method: 'PUT',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`${res.status}`);
+        const saved = await res.json();
+        updateRadarFromProfile(saved);
+        profileEls.saved.hidden = false;
+        setTimeout(() => { profileEls.saved.hidden = true; }, 2500);
+    } catch (err) {
+        console.error(err);
+        alert('儲存失敗,請稍後再試');
+    } finally {
+        profileEls.save.disabled = false;
+    }
+});
 
 // ==========================================================================
 // 小工具:防 XSS
