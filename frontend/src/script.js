@@ -15,6 +15,28 @@ function authHeaders() {
 }
 
 // ==========================================================================
+// Course ID helpers — courses 用 (semester, serial_no) composite key
+// ==========================================================================
+// 一律用 "{semester}__{serial_no}" 字串當作 JS-side 的 courseId,
+// data-id 屬性、Map/Set keys、scheduleState keys 都用這個。
+function courseId(c) {
+    if (!c) return '';
+    if (typeof c === 'string') return c;
+    return `${c.semester}__${c.serial_no}`;
+}
+
+function parseCourseId(id) {
+    const idx = (id || '').indexOf('__');
+    if (idx < 0) return { semester: '', serial_no: id || '' };
+    return { semester: id.slice(0, idx), serial_no: id.slice(idx + 2) };
+}
+
+function courseUrlPath(c) {
+    const { semester, serial_no } = typeof c === 'string' ? parseCourseId(c) : c;
+    return `${encodeURIComponent(semester)}/${encodeURIComponent(serial_no)}`;
+}
+
+// ==========================================================================
 // Toast 通知 — 取代 alert()
 // ==========================================================================
 const TOAST_ICONS = {
@@ -72,7 +94,11 @@ function applyTheme(name) {
 }
 
 function updateChartThemeFromBody() {
-    if (typeof radarChart === 'undefined' || !radarChart) return;
+    // radarChart 是 const,在 TDZ 期間 typeof 也會 throw —
+    // 用 try/catch 跳過「chart 還沒定義好」的早期呼叫
+    try {
+        if (!radarChart) return;
+    } catch (e) { return; }
     const dark = document.body.classList.contains('theme-dark');
     const grid = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
     const angle = dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
@@ -228,6 +254,7 @@ const els = {
     searchInput: document.getElementById('search-input'),
     filterDept: document.getElementById('filter-dept'),
     filterCredits: document.getElementById('filter-credits'),
+    filterSemesterTabs: document.getElementById('filter-semester-tabs'),
     searchBtn: document.getElementById('search-btn'),
     resultsBody: document.getElementById('results-body'),
     resultsMeta: document.getElementById('results-meta'),
@@ -244,14 +271,25 @@ async function initDiscoverView() {
         const depts = await fetch(`${API_BASE}/departments`).then(r => r.json());
         depts.forEach(d => {
             const opt = document.createElement('option');
-            opt.value = d;
-            opt.textContent = d;
+            opt.value = d.name;
+            // 顯示「代碼 名稱」(沒代碼的不顯示前綴)
+            opt.textContent = d.code ? `${d.code}  ${d.name}` : d.name;
             els.filterDept.appendChild(opt);
         });
     } catch (err) {
         console.error('載入系所清單失敗:', err);
         els.resultsMeta.textContent = '無法連線到 API server (預期：http://localhost:8000)。請確認後端有啟動。';
     }
+
+    // 學期 tabs
+    els.filterSemesterTabs.querySelectorAll('.semester-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            els.filterSemesterTabs.querySelectorAll('.semester-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            discoverState.offset = 0;
+            searchCourses();
+        });
+    });
 
     els.searchBtn.addEventListener('click', () => {
         discoverState.offset = 0;
@@ -284,22 +322,25 @@ async function initDiscoverView() {
 
 async function searchCourses({ keepParams = false } = {}) {
     if (!keepParams) {
+        const activeSemBtn = els.filterSemesterTabs.querySelector('.semester-tab.active');
         discoverState.currentParams = {
             q: els.searchInput.value.trim(),
             dept: els.filterDept.value,
             credits: els.filterCredits.value,
+            semester: activeSemBtn ? activeSemBtn.dataset.sem : '',
         };
     }
 
     const params = new URLSearchParams();
-    const { q, dept, credits } = discoverState.currentParams;
+    const { q, dept, credits, semester } = discoverState.currentParams;
     if (q) params.set('q', q);
     if (dept) params.set('dept', dept);
     if (credits) params.set('credits', credits);
+    if (semester) params.set('semester', semester);
     params.set('limit', PAGE_SIZE);
     params.set('offset', discoverState.offset);
 
-    els.resultsBody.innerHTML = skeletonRowsHTML(8, 6);
+    els.resultsBody.innerHTML = skeletonRowsHTML(9, 6);
     els.pagination.hidden = true;
 
     try {
@@ -310,32 +351,34 @@ async function searchCourses({ keepParams = false } = {}) {
         renderPagination();
         document.getElementById('fit-header').hidden = true;
         if (getToken()) {
-            annotateResultsWithFit(data.items.map(c => c.serial_no));
+            annotateResultsWithFit(data.items);
         }
     } catch (err) {
         console.error(err);
-        els.resultsBody.innerHTML = '<tr><td colspan="6" class="empty-row">搜尋失敗，請確認 API server 是否啟動</td></tr>';
+        els.resultsBody.innerHTML = '<tr><td colspan="10" class="empty-row">搜尋失敗，請確認 API server 是否啟動</td></tr>';
     }
 }
 
 function renderResults(items) {
     if (items.length === 0) {
         const hint = (els.searchInput.value || els.filterDept.value || els.filterCredits.value)
-            ? '<tr><td colspan="9" class="empty-row">沒有符合條件的課程 — 試試減少篩選或換個關鍵字</td></tr>'
-            : '<tr><td colspan="9" class="empty-row">沒有資料 — 確認後端有跑起來?</td></tr>';
+            ? '<tr><td colspan="10" class="empty-row">沒有符合條件的課程 — 試試減少篩選或換個關鍵字</td></tr>'
+            : '<tr><td colspan="10" class="empty-row">沒有資料 — 確認後端有跑起來?</td></tr>';
         els.resultsBody.innerHTML = hint;
         return;
     }
     els.resultsBody.innerHTML = items.map(c => {
-        const inHist = historyState.serialSet.has(c.serial_no);
+        const id = courseId(c);
+        const inHist = historyState.idSet.has(id);
         const btnHtml = getToken() ? `
-            <button class="btn-add-history ${inHist ? 'in-history' : ''}" data-serial="${escapeAttr(c.serial_no)}" data-name="${escapeAttr(c.course_name)}">
+            <button class="btn-add-history ${inHist ? 'in-history' : ''}" data-id="${escapeAttr(id)}" data-name="${escapeAttr(c.course_name)}">
                 ${inHist ? '<i class="fas fa-check"></i> 已修' : '<i class="fas fa-plus"></i> 加入歷史'}
             </button>` : '';
-        const checked = compareState.serials.has(c.serial_no) ? 'checked' : '';
+        const checked = compareState.ids.has(id) ? 'checked' : '';
         return `
-        <tr data-serial="${escapeAttr(c.serial_no)}">
-            <td class="check-cell"><input type="checkbox" class="compare-check" data-serial="${escapeAttr(c.serial_no)}" ${checked}></td>
+        <tr data-id="${escapeAttr(id)}">
+            <td class="check-cell"><input type="checkbox" class="compare-check" data-id="${escapeAttr(id)}" ${checked}></td>
+            <td>${escapeHtml(c.semester)}</td>
             <td>${escapeHtml(c.course_code)}</td>
             <td>${escapeHtml(c.course_name)}</td>
             <td><a href="#" class="teacher-link" data-teacher="${escapeAttr(c.teacher)}">${escapeHtml(c.teacher)}</a></td>
@@ -354,21 +397,21 @@ function renderResults(items) {
                 || e.target.closest('.compare-check')) return;
             els.resultsBody.querySelectorAll('tr').forEach(r => r.classList.remove('active'));
             row.classList.add('active');
-            openDrawer(row.dataset.serial);
+            openDrawer(row.dataset.id);
         });
     });
 
     els.resultsBody.querySelectorAll('.compare-check').forEach(cb => {
         cb.addEventListener('change', (e) => {
             e.stopPropagation();
-            toggleCompare(cb.dataset.serial, cb.checked);
+            toggleCompare(cb.dataset.id, cb.checked);
         });
     });
 
     els.resultsBody.querySelectorAll('.btn-add-history:not(.in-history)').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openHistoryModal(btn.dataset.serial, btn.dataset.name);
+            openHistoryModal(btn.dataset.id, btn.dataset.name);
         });
     });
 }
@@ -397,36 +440,36 @@ function renderPagination() {
 // 課程比較 (compare)
 // ==========================================================================
 const MAX_COMPARE = 3;
-const compareState = { serials: new Set() };
+const compareState = { ids: new Set() };
 
 const compareFab = document.getElementById('compare-fab');
 const compareCountEl = document.getElementById('compare-count');
 const compareModal = document.getElementById('compare-modal');
 const compareBody = document.getElementById('compare-modal-body');
 
-function toggleCompare(serial, checked) {
+function toggleCompare(id, checked) {
     if (checked) {
-        if (compareState.serials.size >= MAX_COMPARE) {
+        if (compareState.ids.size >= MAX_COMPARE) {
             toast(`最多比較 ${MAX_COMPARE} 門課`, 'warn');
-            const cb = els.resultsBody.querySelector(`.compare-check[data-serial="${serial}"]`);
+            const cb = els.resultsBody.querySelector(`.compare-check[data-id="${id}"]`);
             if (cb) cb.checked = false;
             return;
         }
-        compareState.serials.add(serial);
+        compareState.ids.add(id);
     } else {
-        compareState.serials.delete(serial);
+        compareState.ids.delete(id);
     }
     updateCompareFab();
 }
 
 function updateCompareFab() {
-    const n = compareState.serials.size;
+    const n = compareState.ids.size;
     compareFab.hidden = n === 0;
     compareCountEl.textContent = n;
 }
 
 function clearCompare() {
-    compareState.serials.clear();
+    compareState.ids.clear();
     updateCompareFab();
     els.resultsBody.querySelectorAll('.compare-check').forEach(cb => { cb.checked = false; });
 }
@@ -445,21 +488,21 @@ compareModal.addEventListener('click', (e) => {
 function closeCompareModal() { compareModal.hidden = true; }
 
 async function openCompareModal() {
-    if (compareState.serials.size === 0) return;
+    if (compareState.ids.size === 0) return;
     compareModal.hidden = false;
     compareBody.innerHTML = drawerSkeletonHTML();
 
-    const serials = [...compareState.serials];
+    const ids = [...compareState.ids];
     try {
-        const courses = await Promise.all(serials.map(s =>
-            fetch(`${API_BASE}/courses/${encodeURIComponent(s)}`).then(r => r.json())
+        const courses = await Promise.all(ids.map(id =>
+            fetch(`${API_BASE}/courses/${courseUrlPath(id)}`).then(r => r.json())
         ));
         let fits = {};
         if (getToken()) {
             fits = await fetch(`${API_BASE}/me/fits`, {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify(serials),
+                body: JSON.stringify({ items: ids.map(id => parseCourseId(id)) }),
             }).then(r => r.ok ? r.json() : {});
         }
         compareBody.innerHTML = renderCompareTable(courses, fits);
@@ -503,7 +546,7 @@ function renderCompareTable(courses, fits) {
     const cols = courses.map(c => `
         <th class="course-header course-col">
             <span class="compare-course-name">${escapeHtml(c.course_name)}</span>
-            <span class="compare-course-meta">${escapeHtml(c.course_code)} · 流水號 ${escapeHtml(c.serial_no)}</span>
+            <span class="compare-course-meta">${escapeHtml(c.course_code)} · ${escapeHtml(c.semester)} · 流水號 ${escapeHtml(c.serial_no)}</span>
         </th>
     `).join('');
 
@@ -520,7 +563,7 @@ function renderCompareTable(courses, fits) {
             <tr>
                 <th class="label-col">${label}</th>
                 ${courses.map(c => {
-                    const f = fits[c.serial_no];
+                    const f = fits[courseId(c)];
                     return `<td class="course-col">${f ? f[key].toFixed(0) : '—'}</td>`;
                 }).join('')}
             </tr>
@@ -531,7 +574,7 @@ function renderCompareTable(courses, fits) {
         <tr>
             <th class="label-col">適合度</th>
             ${courses.map(c => {
-                const f = fits[c.serial_no];
+                const f = fits[courseId(c)];
                 return `<td class="course-col">${f ? `<span class="compare-fit-total">${f.total.toFixed(0)}%</span>` : '—'}</td>`;
             }).join('')}
         </tr>
@@ -541,7 +584,7 @@ function renderCompareTable(courses, fits) {
         <tr>
             <th class="label-col">推薦理由</th>
             ${courses.map(c => {
-                const f = fits[c.serial_no];
+                const f = fits[courseId(c)];
                 return `<td class="course-col" style="font-size:0.8rem;color:#555;font-style:italic">${f ? escapeHtml(f.explanation || '') : '—'}</td>`;
             }).join('')}
         </tr>
@@ -678,7 +721,7 @@ async function openTeacherInDrawer(name) {
         drawerTitle.textContent = `教師:${d.teacher}`;
         drawerBody.innerHTML = renderTeacherContent(d);
         drawerBody.querySelectorAll('.teacher-course-row').forEach(row => {
-            row.addEventListener('click', () => openDrawer(row.dataset.serial));
+            row.addEventListener('click', () => openDrawer(row.dataset.id));
         });
     } catch (err) {
         console.error(err);
@@ -690,10 +733,10 @@ function renderTeacherContent(d) {
     const s = d.stats;
     const fmt = v => v == null ? '—' : v.toFixed(2);
     const courses = d.courses.map(c => `
-        <div class="teacher-course-row" data-serial="${escapeAttr(c.serial_no)}">
+        <div class="teacher-course-row" data-id="${escapeAttr(courseId(c))}">
             <div class="teacher-course-main">
                 <div class="teacher-course-name">${escapeHtml(c.course_name)} <span class="teacher-course-code">${escapeHtml(c.course_code)}</span></div>
-                <div class="teacher-course-meta">${escapeHtml(c.department) || '—'} · ${escapeHtml(c.credits) || '?'} 學分 · 開過 ${c.n_offerings} 次</div>
+                <div class="teacher-course-meta">${escapeHtml(c.department) || '—'} · ${escapeHtml(c.credits) || '?'} 學分 · ${escapeHtml(c.semester)} · 開過 ${c.n_offerings} 次</div>
             </div>
             <div class="teacher-course-rev">PTT ${c.n_reviews}</div>
         </div>
@@ -719,18 +762,19 @@ function renderTeacherContent(d) {
     `;
 }
 
-async function openDrawer(serialNo) {
+async function openDrawer(id) {
     drawer.classList.add('open');
     drawerOverlay.classList.add('open');
     drawerTitle.textContent = '載入中…';
     drawerBody.innerHTML = drawerSkeletonHTML();
 
+    const urlPath = courseUrlPath(id);
     try {
         const [detail, reviewsResp, fit, related] = await Promise.all([
-            fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}`).then(r => r.json()),
-            fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}/reviews`).then(r => r.json()),
-            loadDrawerFit(serialNo),
-            fetch(`${API_BASE}/courses/${encodeURIComponent(serialNo)}/related?limit=5`).then(r => r.ok ? r.json() : []),
+            fetch(`${API_BASE}/courses/${urlPath}`).then(r => r.json()),
+            fetch(`${API_BASE}/courses/${urlPath}/reviews`).then(r => r.json()),
+            loadDrawerFit(id),
+            fetch(`${API_BASE}/courses/${urlPath}/related?limit=5`).then(r => r.ok ? r.json() : []),
         ]);
         drawerTitle.textContent = detail.course_name;
         drawerBody.innerHTML = renderFitBox(fit)
@@ -739,11 +783,11 @@ async function openDrawer(serialNo) {
         const addBtn = document.getElementById('drawer-add-history-btn');
         if (addBtn) {
             addBtn.addEventListener('click', () => {
-                openHistoryModal(detail.serial_no, detail.course_name);
+                openHistoryModal(courseId(detail), detail.course_name);
             });
         }
         drawerBody.querySelectorAll('.related-item').forEach(el => {
-            el.addEventListener('click', () => openDrawer(el.dataset.serial));
+            el.addEventListener('click', () => openDrawer(el.dataset.id));
         });
     } catch (err) {
         console.error(err);
@@ -760,10 +804,10 @@ function renderRelatedSection(related) {
             ? `<span class="related-tag related-cf">CF · ${r.score.toFixed(0)}%</span>`
             : `<span class="related-tag related-content">內容類似 · ${r.score.toFixed(0)}</span>`;
         return `
-            <div class="related-item teacher-course-row" data-serial="${escapeAttr(r.serial_no)}">
+            <div class="related-item teacher-course-row" data-id="${escapeAttr(courseId(r))}">
                 <div class="teacher-course-main">
                     <div class="teacher-course-name">${escapeHtml(r.course_name)} <span class="teacher-course-code">${escapeHtml(r.course_code)}</span></div>
-                    <div class="teacher-course-meta">${escapeHtml(r.teacher) || '—'} · ${escapeHtml(r.credits)} 學分</div>
+                    <div class="teacher-course-meta">${escapeHtml(r.teacher) || '—'} · ${escapeHtml(r.credits)} 學分 · ${escapeHtml(r.semester)}</div>
                 </div>
                 ${tag}
             </div>
@@ -777,10 +821,10 @@ function renderRelatedSection(related) {
     `;
 }
 
-let currentDrawerSerial = null;
+let currentDrawerId = null;
 
 function renderDrawerContent(d, reviews) {
-    currentDrawerSerial = d.serial_no;
+    currentDrawerId = courseId(d);
     // 把有 summary 的「評價文」排前面,「問題/求救/Re:」這類無 summary 的排後面
     const sortedReviews = [...reviews].sort((a, b) => {
         const aHas = a.summary ? 1 : 0;
@@ -816,17 +860,17 @@ function renderDrawerContent(d, reviews) {
             `;
         }).join('');
 
-    const inHist = historyState.serialSet.has(d.serial_no);
+    const inHist = historyState.idSet.has(courseId(d));
     const histBtn = getToken() ? `
         <button class="drawer-add-history-btn ${inHist ? 'in-history' : ''}" id="drawer-add-history-btn" ${inHist ? 'disabled' : ''}>
             ${inHist ? '<i class="fas fa-check"></i> 已在修課歷史中' : '<i class="fas fa-plus"></i> 加入修課歷史'}
         </button>` : '';
-    const addBtn = scheduleToggleBtn(d) + wishlistToggleBtn(d.serial_no) + histBtn;
+    const addBtn = scheduleToggleBtn(d) + wishlistToggleBtn(d) + histBtn;
 
     return `
         <div class="drawer-section">
             <div class="course-name-big">${escapeHtml(d.course_name)}</div>
-            <div class="course-meta-row"><strong>課號</strong> ${escapeHtml(d.course_code)}　|　<strong>流水號</strong> ${escapeHtml(d.serial_no)}</div>
+            <div class="course-meta-row"><strong>學期</strong> ${escapeHtml(d.semester)}　|　<strong>課號</strong> ${escapeHtml(d.course_code)}　|　<strong>流水號</strong> ${escapeHtml(d.serial_no)}</div>
             <div class="course-meta-row"><strong>教師</strong> ${d.teacher ? `<a href="#" class="teacher-link" data-teacher="${escapeAttr(d.teacher)}">${escapeHtml(d.teacher)}</a>` : '—'}</div>
             <div class="course-meta-row"><strong>系所</strong> ${escapeHtml(d.department) || '—'}</div>
             <div class="course-meta-row"><strong>學分</strong> ${escapeHtml(d.credits) || '—'}　|　<strong>必選修</strong> ${escapeHtml(d.req_type) || '—'}</div>
@@ -1035,10 +1079,10 @@ function applyLoggedOutUI() {
     radarChart.update();
     profileState.loaded = false;
     historyState.items = [];
-    historyState.serialSet = new Set();
+    historyState.idSet = new Set();
     historyState.loaded = false;
     wishlistState.items = [];
-    wishlistState.serialSet = new Set();
+    wishlistState.idSet = new Set();
     wishlistState.loaded = false;
     loadDashboardRecommendations();
     updateLoggedOutHints();
@@ -1209,7 +1253,7 @@ profileEls.form.addEventListener('submit', async (e) => {
 // ==========================================================================
 const historyState = {
     items: [],
-    serialSet: new Set(),
+    idSet: new Set(),
     loaded: false,
 };
 
@@ -1223,26 +1267,25 @@ const historyEls = {
     close: document.getElementById('history-modal-close'),
     course: document.getElementById('history-modal-course'),
     form: document.getElementById('history-form'),
-    semester: document.getElementById('history-semester'),
     grade: document.getElementById('history-grade'),
     notes: document.getElementById('history-notes'),
     error: document.getElementById('history-error'),
     submit: document.getElementById('history-submit'),
 };
 
-let pendingHistorySerial = null;
+let pendingHistoryId = null;
 
 async function loadHistory() {
     if (!getToken()) {
         historyState.items = [];
-        historyState.serialSet = new Set();
+        historyState.idSet = new Set();
         return;
     }
     try {
         const res = await fetch(`${API_BASE}/me/history`, { headers: authHeaders() });
         if (!res.ok) return;
         historyState.items = await res.json();
-        historyState.serialSet = new Set(historyState.items.map(i => i.serial_no));
+        historyState.idSet = new Set(historyState.items.map(i => courseId(i)));
         historyState.loaded = true;
     } catch (err) {
         console.warn('loadHistory failed', err);
@@ -1308,24 +1351,24 @@ function renderHistoryTable() {
     });
 }
 
-function openHistoryModal(serialNo, courseName) {
+function openHistoryModal(id, courseName) {
     if (!getToken()) {
         openAuthModal('login');
         return;
     }
-    pendingHistorySerial = serialNo;
-    historyEls.course.textContent = `${courseName} (流水號 ${serialNo})`;
-    historyEls.semester.value = '';
+    pendingHistoryId = id;
+    const { semester, serial_no } = parseCourseId(id);
+    historyEls.course.textContent = `${courseName} (${semester} · 流水號 ${serial_no})`;
     historyEls.grade.value = '';
     historyEls.notes.value = '';
     historyEls.error.hidden = true;
     historyEls.overlay.hidden = false;
-    setTimeout(() => historyEls.semester.focus(), 50);
+    setTimeout(() => historyEls.grade.focus(), 50);
 }
 
 function closeHistoryModal() {
     historyEls.overlay.hidden = true;
-    pendingHistorySerial = null;
+    pendingHistoryId = null;
 }
 
 historyEls.close.addEventListener('click', closeHistoryModal);
@@ -1335,13 +1378,8 @@ historyEls.overlay.addEventListener('click', (e) => {
 
 historyEls.form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!pendingHistorySerial) return;
-    const semester = historyEls.semester.value.trim();
-    if (!semester) {
-        historyEls.error.textContent = '請填寫學期';
-        historyEls.error.hidden = false;
-        return;
-    }
+    if (!pendingHistoryId) return;
+    const { semester, serial_no } = parseCourseId(pendingHistoryId);
     historyEls.submit.disabled = true;
     historyEls.error.hidden = true;
     try {
@@ -1349,8 +1387,8 @@ historyEls.form.addEventListener('submit', async (e) => {
             method: 'POST',
             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                serial_no: pendingHistorySerial,
                 semester,
+                serial_no,
                 grade: historyEls.grade.value || null,
                 notes: historyEls.notes.value || null,
             }),
@@ -1420,9 +1458,10 @@ async function loadDashboardRecommendations() {
                   <a href="#" data-goto="userinfo">填一下偏好</a>會更準
                </div>` : '';
         listEl.innerHTML = banner + items.map(it => {
-            const has = inSchedule(it.serial_no);
+            const id = courseId(it);
+            const has = inSchedule(id);
             return `
-            <div class="course-card" data-serial="${escapeAttr(it.serial_no)}">
+            <div class="course-card" data-id="${escapeAttr(id)}">
                 <div class="course-card-tag fit-tag">適合度 ${it.fit.total.toFixed(0)}%${lowSampleBadge(it.fit.n_reviews)}</div>
                 <div class="course-card-subtags">
                     <span class="tag">推薦 ${it.fit.recommendation.toFixed(0)}</span>
@@ -1434,10 +1473,10 @@ async function loadDashboardRecommendations() {
                 <div class="course-card-details">
                     <span><i class="fas fa-book"></i> ${escapeHtml(it.course_name)}</span>
                     <span><i class="fas fa-user"></i> ${escapeHtml(it.teacher)}</span>
-                    <span><i class="fas fa-clock"></i> ${escapeHtml(it.credits)} 學分</span>
+                    <span><i class="fas fa-clock"></i> ${escapeHtml(it.credits)} 學分 · ${escapeHtml(it.semester)}</span>
                 </div>
                 ${it.fit.explanation ? `<div class="fit-explanation">${escapeHtml(it.fit.explanation)}</div>` : ''}
-                <button class="btn-toggle-schedule ${has ? 'in-schedule' : ''}" data-schedule-toggle="${escapeAttr(it.serial_no)}" style="margin-top:10px">
+                <button class="btn-toggle-schedule ${has ? 'in-schedule' : ''}" data-schedule-toggle="${escapeAttr(id)}" style="margin-top:10px">
                     ${has ? '<i class="fas fa-check"></i> 已在課表' : '<i class="fas fa-calendar-plus"></i> 加入課表'}
                 </button>
             </div>`;
@@ -1445,7 +1484,7 @@ async function loadDashboardRecommendations() {
         listEl.querySelectorAll('.course-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (e.target.closest('[data-schedule-toggle]')) return;
-                openDrawer(card.dataset.serial);
+                openDrawer(card.dataset.id);
             });
         });
     } catch (err) {
@@ -1454,28 +1493,28 @@ async function loadDashboardRecommendations() {
 }
 
 // ---- 探索頁:批次拿 fit 分數,塞回表格 ----
-async function annotateResultsWithFit(serialNos) {
-    if (!getToken() || serialNos.length === 0) return;
+async function annotateResultsWithFit(courseItems) {
+    if (!getToken() || courseItems.length === 0) return;
     try {
         const fits = await fetch(`${API_BASE}/me/fits`, {
             method: 'POST',
             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify(serialNos),
+            body: JSON.stringify({
+                items: courseItems.map(c => ({ semester: c.semester, serial_no: c.serial_no })),
+            }),
         }).then(r => r.ok ? r.json() : {});
         document.getElementById('fit-header').hidden = false;
         els.resultsBody.querySelectorAll('tr').forEach(row => {
-            const s = row.dataset.serial;
-            if (!s) return;
-            const f = fits[s];
+            const id = row.dataset.id;
+            if (!id) return;
+            const f = fits[id];
             if (!f) return;
-            // 找到 actions cell 前一格插入
             const actionCell = row.querySelector('.action-cell');
             const cell = document.createElement('td');
             cell.dataset.fit = f.total;
             cell.innerHTML = renderFitBadge(f.total);
             row.insertBefore(cell, actionCell);
         });
-        // 預設按 fit 降序排
         sortResultsByFit();
     } catch (err) {
         console.warn('annotateResultsWithFit failed', err);
@@ -1484,7 +1523,7 @@ async function annotateResultsWithFit(serialNos) {
 
 let resultsSortDirection = 'desc';
 function sortResultsByFit() {
-    const rows = [...els.resultsBody.querySelectorAll('tr[data-serial]')];
+    const rows = [...els.resultsBody.querySelectorAll('tr[data-id]')];
     rows.sort((a, b) => {
         const av = Number(a.querySelector('[data-fit]')?.dataset.fit ?? -1);
         const bv = Number(b.querySelector('[data-fit]')?.dataset.fit ?? -1);
@@ -1499,10 +1538,10 @@ document.getElementById('fit-header').addEventListener('click', () => {
 });
 
 // ---- Drawer 內的 fit 顯示 ----
-async function loadDrawerFit(serialNo) {
+async function loadDrawerFit(id) {
     if (!getToken()) return null;
     try {
-        const res = await fetch(`${API_BASE}/me/fit/${encodeURIComponent(serialNo)}`, {
+        const res = await fetch(`${API_BASE}/me/fit/${courseUrlPath(id)}`, {
             headers: authHeaders(),
         });
         if (!res.ok) return null;
@@ -1581,10 +1620,10 @@ async function renderFitAnalysisView() {
             return;
         }
         listEl.innerHTML = items.map((it, i) => `
-            <div class="fit-list-item" data-serial="${escapeAttr(it.serial_no)}">
+            <div class="fit-list-item" data-id="${escapeAttr(courseId(it))}">
                 <div class="fit-rank">#${i + 1}</div>
                 <div class="fit-item-main">
-                    <div class="fit-item-title">${escapeHtml(it.course_name)} <span style="color:#888;font-weight:normal;font-size:0.85rem">${escapeHtml(it.course_code)}</span></div>
+                    <div class="fit-item-title">${escapeHtml(it.course_name)} <span style="color:#888;font-weight:normal;font-size:0.85rem">${escapeHtml(it.course_code)} · ${escapeHtml(it.semester)}</span></div>
                     <div class="fit-item-meta">${escapeHtml(it.teacher)} · ${escapeHtml(it.credits)} 學分 · PTT ${it.fit.n_reviews} 篇評價</div>
                     <div class="fit-bars">
                         <span class="fit-bar-pill">推薦 <strong>${it.fit.recommendation.toFixed(0)}</strong></span>
@@ -1601,7 +1640,7 @@ async function renderFitAnalysisView() {
         listEl.querySelectorAll('.fit-list-item').forEach(el => {
             el.addEventListener('click', (e) => {
                 if (e.target.closest('[data-schedule-toggle]')) return;
-                openDrawer(el.dataset.serial);
+                openDrawer(el.dataset.id);
             });
         });
     } catch (err) {
@@ -1615,34 +1654,35 @@ async function renderFitAnalysisView() {
 // ==========================================================================
 const wishlistState = {
     items: [],
-    serialSet: new Set(),
+    idSet: new Set(),
     loaded: false,
 };
 
 async function loadWishlist() {
     if (!getToken()) {
         wishlistState.items = [];
-        wishlistState.serialSet = new Set();
+        wishlistState.idSet = new Set();
         return;
     }
     try {
         const res = await fetch(`${API_BASE}/me/wishlist`, { headers: authHeaders() });
         if (!res.ok) return;
         wishlistState.items = await res.json();
-        wishlistState.serialSet = new Set(wishlistState.items.map(i => i.serial_no));
+        wishlistState.idSet = new Set(wishlistState.items.map(i => courseId(i)));
         wishlistState.loaded = true;
     } catch (err) {
         console.warn('loadWishlist failed', err);
     }
 }
 
-async function addToWishlist(serial_no) {
+async function addToWishlist(id) {
     if (!getToken()) { openAuthModal('login'); return; }
+    const { semester, serial_no } = parseCourseId(id);
     try {
         const res = await fetch(`${API_BASE}/me/wishlist`, {
             method: 'POST',
             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serial_no }),
+            body: JSON.stringify({ semester, serial_no }),
         });
         if (!res.ok && res.status !== 409) {
             const err = await res.json().catch(() => ({}));
@@ -1687,11 +1727,12 @@ async function renderWishlistView() {
     const items = wishlistState.items;
     meta.textContent = `共 ${items.length} 門想修課`;
     if (items.length === 0) {
-        body.innerHTML = '<tr><td colspan="7" class="empty-row">還是空的 — 到課程探索點愛心按鈕加入想修</td></tr>';
+        body.innerHTML = '<tr><td colspan="8" class="empty-row">還是空的 — 到課程探索點愛心按鈕加入想修</td></tr>';
         return;
     }
     body.innerHTML = items.map(w => `
-        <tr data-serial="${escapeAttr(w.serial_no)}">
+        <tr data-id="${escapeAttr(courseId(w))}">
+            <td>${escapeHtml(w.semester)}</td>
             <td>${escapeHtml(w.course_code)}</td>
             <td>${escapeHtml(w.course_name)}</td>
             <td>${escapeHtml(w.teacher)}</td>
@@ -1707,7 +1748,7 @@ async function renderWishlistView() {
     body.querySelectorAll('tr').forEach(row => {
         row.addEventListener('click', (e) => {
             if (e.target.closest('.btn-delete-row')) return;
-            openDrawer(row.dataset.serial);
+            openDrawer(row.dataset.id);
         });
     });
     body.querySelectorAll('.btn-delete-row').forEach(btn => {
@@ -1719,17 +1760,18 @@ async function renderWishlistView() {
     });
 }
 
-function wishlistToggleBtn(serial_no) {
+function wishlistToggleBtn(course) {
     if (!getToken()) return '';
-    const has = wishlistState.serialSet.has(serial_no);
-    return `<button class="btn-toggle-wishlist ${has ? 'in-wishlist' : ''}" data-wishlist-toggle="${escapeAttr(serial_no)}">
+    const id = courseId(course);
+    const has = wishlistState.idSet.has(id);
+    return `<button class="btn-toggle-wishlist ${has ? 'in-wishlist' : ''}" data-wishlist-toggle="${escapeAttr(id)}">
         ${has ? '<i class="fas fa-heart"></i> 已加入想修' : '<i class="far fa-heart"></i> 加入想修'}
     </button>`;
 }
 
 function refreshWishlistButtons() {
     document.querySelectorAll('[data-wishlist-toggle]').forEach(btn => {
-        const has = wishlistState.serialSet.has(btn.dataset.wishlistToggle);
+        const has = wishlistState.idSet.has(btn.dataset.wishlistToggle);
         btn.classList.toggle('in-wishlist', has);
         btn.innerHTML = has ? '<i class="fas fa-heart"></i> 已加入想修' : '<i class="far fa-heart"></i> 加入想修';
     });
@@ -1740,13 +1782,12 @@ document.addEventListener('click', (e) => {
     if (!btn) return;
     e.preventDefault();
     e.stopPropagation();
-    const serial = btn.dataset.wishlistToggle;
-    if (wishlistState.serialSet.has(serial)) {
-        // 找對應 wishlist_id 刪掉
-        const item = wishlistState.items.find(w => w.serial_no === serial);
+    const id = btn.dataset.wishlistToggle;
+    if (wishlistState.idSet.has(id)) {
+        const item = wishlistState.items.find(w => courseId(w) === id);
         if (item) removeFromWishlist(item.id);
     } else {
-        addToWishlist(serial);
+        addToWishlist(id);
     }
 });
 
@@ -1755,7 +1796,7 @@ document.addEventListener('click', (e) => {
 // ==========================================================================
 const SCHEDULE_KEY = 'ntu_app_schedule';
 
-// 結構:{ serial_no: { course_name, teacher, slots: [[weekday, period], ...] } }
+// 結構:{ "{semester}__{serial_no}": { semester, serial_no, course_name, teacher, slots: [[weekday, period], ...] } }
 function getSchedule() {
     try { return JSON.parse(localStorage.getItem(SCHEDULE_KEY) || '{}'); }
     catch (e) { return {}; }
@@ -1763,12 +1804,14 @@ function getSchedule() {
 function saveSchedule(s) {
     localStorage.setItem(SCHEDULE_KEY, JSON.stringify(s));
 }
-function inSchedule(serial) {
-    return serial in getSchedule();
+function inSchedule(id) {
+    return id in getSchedule();
 }
 function addToSchedule(course) {
     const s = getSchedule();
-    s[course.serial_no] = {
+    s[courseId(course)] = {
+        semester: course.semester,
+        serial_no: course.serial_no,
         course_name: course.course_name,
         teacher: course.teacher,
         course_code: course.course_code,
@@ -1776,9 +1819,9 @@ function addToSchedule(course) {
     };
     saveSchedule(s);
 }
-function removeFromSchedule(serial) {
+function removeFromSchedule(id) {
     const s = getSchedule();
-    delete s[serial];
+    delete s[id];
     saveSchedule(s);
 }
 
@@ -1788,24 +1831,24 @@ const PERIOD_ORDER = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'A', 'B
 
 function renderScheduleView() {
     const sched = getSchedule();
-    const serials = Object.keys(sched);
+    const ids = Object.keys(sched);
     const summaryEl = document.getElementById('schedule-summary');
     const conflictEl = document.getElementById('schedule-conflicts');
     const gridEl = document.getElementById('schedule-grid');
     const listCard = document.getElementById('schedule-list-card');
     const listEl = document.getElementById('schedule-course-list');
 
-    summaryEl.textContent = serials.length === 0
+    summaryEl.textContent = ids.length === 0
         ? '尚未加入任何課程 — 到課程探索/推薦頁點「加入課表」'
-        : `已加入 ${serials.length} 門課`;
+        : `已加入 ${ids.length} 門課`;
 
     // 計算每個 (weekday, period) 上有哪些課
     const cellMap = {};
-    serials.forEach(serial => {
-        const c = sched[serial];
+    ids.forEach(id => {
+        const c = sched[id];
         (c.slots || []).forEach(([wd, p]) => {
             const key = `${wd}-${p}`;
-            (cellMap[key] = cellMap[key] || []).push({ serial, ...c });
+            (cellMap[key] = cellMap[key] || []).push({ id, ...c });
         });
     });
 
@@ -1834,7 +1877,7 @@ function renderScheduleView() {
             const list = cellMap[`${wd}-${p}`] || [];
             const conflict = list.length > 1 ? ' conflict' : '';
             const inner = list.map(c => `
-                <div class="cell-course" data-serial="${escapeAttr(c.serial)}" title="${escapeAttr(c.teacher)}">
+                <div class="cell-course" data-id="${escapeAttr(c.id)}" title="${escapeAttr(c.teacher)}">
                     ${escapeHtml(c.course_name)}
                 </div>
             `).join('');
@@ -1844,20 +1887,20 @@ function renderScheduleView() {
     gridEl.innerHTML = cells.join('');
 
     // 列表
-    if (serials.length > 0) {
+    if (ids.length > 0) {
         listCard.hidden = false;
-        listEl.innerHTML = serials.map(s => {
-            const c = sched[s];
+        listEl.innerHTML = ids.map(id => {
+            const c = sched[id];
             const slotText = (c.slots && c.slots.length)
                 ? c.slots.map(([wd, p]) => `週${WEEKDAY_LABELS[wd-1]}${p}`).join(', ')
                 : '無排定時段';
             return `
-                <div class="schedule-course-item" data-serial="${escapeAttr(s)}">
+                <div class="schedule-course-item" data-id="${escapeAttr(id)}">
                     <div>
-                        <div><strong>${escapeHtml(c.course_name)}</strong> <span style="color:#888">${escapeHtml(c.course_code || '')}</span></div>
+                        <div><strong>${escapeHtml(c.course_name)}</strong> <span style="color:#888">${escapeHtml(c.course_code || '')} · ${escapeHtml(c.semester || '')}</span></div>
                         <div class="meta">${escapeHtml(c.teacher || '')} · ${slotText}</div>
                     </div>
-                    <button class="btn-remove-schedule" data-serial="${escapeAttr(s)}" title="移除"><i class="fas fa-trash"></i></button>
+                    <button class="btn-remove-schedule" data-id="${escapeAttr(id)}" title="移除"><i class="fas fa-trash"></i></button>
                 </div>
             `;
         }).join('');
@@ -1867,18 +1910,18 @@ function renderScheduleView() {
 
     // 綁定 click
     gridEl.querySelectorAll('.cell-course').forEach(el => {
-        el.addEventListener('click', () => openDrawer(el.dataset.serial));
+        el.addEventListener('click', () => openDrawer(el.dataset.id));
     });
     listEl.querySelectorAll('.schedule-course-item').forEach(el => {
         el.addEventListener('click', (e) => {
             if (e.target.closest('.btn-remove-schedule')) return;
-            openDrawer(el.dataset.serial);
+            openDrawer(el.dataset.id);
         });
     });
     listEl.querySelectorAll('.btn-remove-schedule').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            removeFromSchedule(btn.dataset.serial);
+            removeFromSchedule(btn.dataset.id);
             renderScheduleView();
             refreshScheduleButtons();
         });
@@ -1911,8 +1954,9 @@ document.getElementById('wishlist-export').addEventListener('click', () => expor
 
 // === 在抽屜 / compare modal / cards 加「加入課表」按鈕 ===
 function scheduleToggleBtn(course) {
-    const has = inSchedule(course.serial_no);
-    return `<button class="btn-toggle-schedule ${has ? 'in-schedule' : ''}" data-schedule-toggle="${escapeAttr(course.serial_no)}">
+    const id = courseId(course);
+    const has = inSchedule(id);
+    return `<button class="btn-toggle-schedule ${has ? 'in-schedule' : ''}" data-schedule-toggle="${escapeAttr(id)}">
         ${has ? '<i class="fas fa-check"></i> 已在課表' : '<i class="fas fa-calendar-plus"></i> 加入課表'}
     </button>`;
 }
@@ -1923,13 +1967,12 @@ document.addEventListener('click', async (e) => {
     if (!btn) return;
     e.preventDefault();
     e.stopPropagation();
-    const serial = btn.dataset.scheduleToggle;
-    if (inSchedule(serial)) {
-        removeFromSchedule(serial);
+    const id = btn.dataset.scheduleToggle;
+    if (inSchedule(id)) {
+        removeFromSchedule(id);
     } else {
-        // 需要 course detail 才知道 slots
         try {
-            const c = await fetch(`${API_BASE}/courses/${encodeURIComponent(serial)}`).then(r => r.json());
+            const c = await fetch(`${API_BASE}/courses/${courseUrlPath(id)}`).then(r => r.json());
             addToSchedule(c);
         } catch (err) {
             toast('載入課程資料失敗', 'error');

@@ -595,6 +595,40 @@
             cursor: default;
         }
 
+        /* 不該換行的欄位:學期 / 課號 / 學分 / 時間 / 適合度 / action */
+        .results-table tbody tr td:nth-child(2),  /* 學期 */
+        .results-table tbody tr td:nth-child(3),  /* 課號 */
+        .results-table tbody tr td:nth-child(7),  /* 學分 */
+        .results-table tbody tr td:nth-child(8) { /* 時間 */
+            white-space: nowrap;
+        }
+
+        /* 教師姓名不要拆字 (CJK 字元預設可從每個字之間斷行) */
+        .results-table tbody tr td:nth-child(5) {
+            white-space: nowrap;
+            word-break: keep-all;
+        }
+
+        /* 適合度欄位 (動態插在 action 之前) + action button */
+        .results-table tbody tr td[data-fit],
+        .results-table tbody tr td.action-cell {
+            white-space: nowrap;
+        }
+
+        /* 系所長字串允許換行,但每個系所之間斷行就好 */
+        .results-table tbody tr td:nth-child(6) {
+            word-break: keep-all;
+            min-width: 180px;
+            max-width: 360px;
+        }
+
+        /* 課名兩行內就斷掉,過長加 ellipsis */
+        .results-table tbody tr td:nth-child(4) {
+            min-width: 140px;
+            max-width: 260px;
+            word-break: keep-all;
+        }
+
         .results-table .empty-row:hover {
             background: transparent;
         }
@@ -2475,4 +2509,51 @@
 
         body.theme-dark .review-item {
             border-color: #353a45;
+        }
+
+        /* =========================================
+           Semester filter tabs
+           ========================================= */
+        .semester-tabs {
+            display: inline-flex;
+            gap: 4px;
+            background: #f0f2f5;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            padding: 3px;
+        }
+
+        .semester-tab {
+            padding: 6px 14px;
+            font-size: 0.85rem;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: #555;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .semester-tab:hover:not(.active) {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .semester-tab.active {
+            background: var(--active-blue);
+            color: white;
+            font-weight: 600;
+        }
+
+        body.theme-dark .semester-tabs {
+            background: #1f2229;
+            border-color: #353a45;
+        }
+
+        body.theme-dark .semester-tab {
+            color: #b0b0b0;
+        }
+
+        body.theme-dark .semester-tab:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.05);
         }

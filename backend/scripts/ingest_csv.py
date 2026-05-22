@@ -16,10 +16,18 @@ join：reviews.course_id ↔ courses.course_code（= 原 CSV 的「課號」）
 from __future__ import annotations
 
 import argparse
+import re
 import sqlite3
 from pathlib import Path
 
 import pandas as pd
+
+_SEMESTER_RE = re.compile(r"/courses/(\d{3}-\d)/", re.IGNORECASE)
+
+
+def _semester_from_url(url: str) -> str:
+    m = _SEMESTER_RE.search(url or "")
+    return m.group(1) if m else ""
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DB_PATH = DATA_DIR / "app.db"
@@ -58,7 +66,8 @@ DROP TABLE IF EXISTS reviews_raw;
 DROP TABLE IF EXISTS reviews_structured;
 
 CREATE TABLE courses (
-    serial_no          TEXT PRIMARY KEY,
+    semester           TEXT NOT NULL,
+    serial_no          TEXT NOT NULL,
     course_code        TEXT,
     course_identifier  TEXT,
     course_name        TEXT,
@@ -77,11 +86,13 @@ CREATE TABLE courses (
     grading            TEXT,
     notes              TEXT,
     expected_hours     TEXT,
-    detail_url         TEXT
+    detail_url         TEXT,
+    PRIMARY KEY (semester, serial_no)
 );
 CREATE INDEX idx_courses_code       ON courses(course_code);
 CREATE INDEX idx_courses_teacher    ON courses(teacher);
 CREATE INDEX idx_courses_department ON courses(department);
+CREATE INDEX idx_courses_serial     ON courses(serial_no);
 
 CREATE TABLE reviews_raw (
     course_id   TEXT,
@@ -127,7 +138,13 @@ def rebuild() -> None:
     print(f"[1/3] loading {DETAILED_CSV.name} ...")
     df = pd.read_csv(DETAILED_CSV, dtype=str).fillna("")
     df = df.rename(columns=COURSE_COL_MAP)
-    df = df.drop_duplicates(subset=["serial_no"])
+    df["semester"] = df["detail_url"].apply(_semester_from_url)
+    # 沒能解出學期的丟掉
+    bad = (df["semester"] == "").sum()
+    if bad:
+        print(f"      警告: {bad} 筆 detail_url 解不出 semester,跳過")
+        df = df[df["semester"] != ""]
+    df = df.drop_duplicates(subset=["semester", "serial_no"])
     df.to_sql("courses", conn, if_exists="append", index=False)
     print(f"      courses: {len(df)} rows")
 
@@ -158,19 +175,24 @@ def append_courses(csv_path: Path) -> None:
     print(f"loading {csv_path.name} (append mode) ...")
     df = pd.read_csv(csv_path, dtype=str).fillna("")
     df = df.rename(columns=COURSE_COL_MAP)
-    df = df.drop_duplicates(subset=["serial_no"])
+    df["semester"] = df["detail_url"].apply(_semester_from_url)
+    bad = (df["semester"] == "").sum()
+    if bad:
+        print(f"      警告: {bad} 筆 detail_url 解不出 semester,跳過")
+        df = df[df["semester"] != ""]
+    df = df.drop_duplicates(subset=["semester", "serial_no"])
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     before = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
 
-    cols = list(COURSE_COL_MAP.values())
+    cols = ["semester"] + list(COURSE_COL_MAP.values())
     placeholders = ",".join("?" * len(cols))
     col_list = ",".join(cols)
     rows_inserted = 0
     rows_skipped = 0
     for _, r in df.iterrows():
-        if not r.get("serial_no"):
+        if not r.get("serial_no") or not r.get("semester"):
             rows_skipped += 1
             continue
         values = tuple(r.get(c, "") for c in cols)

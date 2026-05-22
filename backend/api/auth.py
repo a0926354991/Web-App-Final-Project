@@ -48,7 +48,29 @@ def new_token() -> str:
 
 
 def init_auth_tables(conn: sqlite3.Connection) -> None:
-    """idempotent — 在 app startup 呼叫，已存在則不動。"""
+    """idempotent — 在 app startup 呼叫,已存在則不動。
+    舊版 schema 的 user_history / user_wishlist 沒 semester 欄位 → DROP 重建。"""
+
+    # Migration FIRST (在 executescript 之前): 舊表 schema 不對 → drop 掉,
+    # 讓底下的 CREATE TABLE IF NOT EXISTS 會重新建出新 schema
+    def _drop_if_old(table: str) -> None:
+        if conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone() is None:
+            return
+        sql_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        old_sql = (sql_row or [""])[0] or ""
+        if "UNIQUE (user_id, semester, serial_no)" not in old_sql:
+            print(f"[migration] dropping old {table} (no composite semester key)")
+            conn.execute(f"DROP TABLE {table}")
+
+    _drop_if_old("user_history")
+    _drop_if_old("user_wishlist")
+
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -68,14 +90,16 @@ def init_auth_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 
+        -- (semester, serial_no) 一起對應到 courses 表的某筆 course offering
         CREATE TABLE IF NOT EXISTS user_history (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id    INTEGER NOT NULL,
-            serial_no  TEXT NOT NULL,
             semester   TEXT NOT NULL,
+            serial_no  TEXT NOT NULL,
             grade      TEXT,
             notes      TEXT,
             added_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (user_id, semester, serial_no),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_history_user ON user_history(user_id);
@@ -83,10 +107,11 @@ def init_auth_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS user_wishlist (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id    INTEGER NOT NULL,
+            semester   TEXT NOT NULL,
             serial_no  TEXT NOT NULL,
             notes      TEXT,
             added_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (user_id, serial_no),
+            UNIQUE (user_id, semester, serial_no),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_wishlist_user ON user_wishlist(user_id);
