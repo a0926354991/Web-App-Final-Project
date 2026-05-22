@@ -41,6 +41,7 @@ SLEEP_RANGE = (0.6, 1.2)  # 友善延遲，避免被擋
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 INPUT_CSV = DATA_DIR / "ntu_detailed_data.csv"
+EXTRA_INPUT_DEFAULT = DATA_DIR / "ntu_detailed_data_114-1.csv"
 OUTPUT_CSV = DATA_DIR / "ntu_reviews_raw.csv"
 
 OUTPUT_COLUMNS = [
@@ -194,20 +195,23 @@ def match_courses(post_title: str, post_content: str, courses: list[dict]) -> li
     return matched
 
 
-def load_full_catalog(detail_path: Path) -> tuple[list[str], dict[str, dict]]:
-    """載入全 NTU 課程目錄，回傳 (依長度遞減排序的 normalized 課名, 課名 → 課程 dict)。"""
-    df = pd.read_csv(detail_path, dtype=str).fillna("")
+def load_full_catalog(detail_paths: list[Path]) -> tuple[list[str], dict[str, dict]]:
+    """載入全 NTU 課程目錄（可合併多學期），回傳 (依長度遞減排序的 normalized 課名, 課名 → 課程 dict)。"""
     name_to_course: dict[str, dict] = {}
-    for _, r in df.iterrows():
-        name = r["課名"].strip()
-        cid = r["課號"].strip()
-        if not name or not cid:
+    for detail_path in detail_paths:
+        if not detail_path.exists():
             continue
-        norm = _normalize(name)
-        if len(norm) < 3:
-            continue  # 太短（民法/數學）模糊比對風險太高
-        if norm not in name_to_course:
-            name_to_course[norm] = {"course_name": name, "course_id": cid}
+        df = pd.read_csv(detail_path, dtype=str).fillna("")
+        for _, r in df.iterrows():
+            name = r["課名"].strip()
+            cid = r["課號"].strip()
+            if not name or not cid:
+                continue
+            norm = _normalize(name)
+            if len(norm) < 3:
+                continue  # 太短（民法/數學）模糊比對風險太高
+            if norm not in name_to_course:
+                name_to_course[norm] = {"course_name": name, "course_id": cid}
     names_desc = sorted(name_to_course.keys(), key=len, reverse=True)
     return names_desc, name_to_course
 
@@ -259,19 +263,24 @@ def _clean_teacher(raw: str) -> list[str]:
     return out
 
 
-def load_courses(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path, dtype=str).fillna("")
-    df = df[["課名", "教師", "課號"]].rename(
-        columns={"課名": "course_name", "教師": "teacher", "課號": "course_id"}
-    )
+def load_courses(paths: list[Path]) -> pd.DataFrame:
     rows = []
-    for _, r in df.iterrows():
-        cname = r["course_name"].strip()
-        cid = r["course_id"].strip()
-        if not cname:
+    for path in paths:
+        if not path.exists():
+            log.warning("跳過不存在的目錄檔: %s", path)
             continue
-        for t in _clean_teacher(r["teacher"]):
-            rows.append({"course_name": cname, "teacher": t, "course_id": cid})
+        log.info("讀 %s", path.name)
+        df = pd.read_csv(path, dtype=str).fillna("")
+        df = df[["課名", "教師", "課號"]].rename(
+            columns={"課名": "course_name", "教師": "teacher", "課號": "course_id"}
+        )
+        for _, r in df.iterrows():
+            cname = r["course_name"].strip()
+            cid = r["course_id"].strip()
+            if not cname:
+                continue
+            for t in _clean_teacher(r["teacher"]):
+                rows.append({"course_name": cname, "teacher": t, "course_id": cid})
     return pd.DataFrame(rows).drop_duplicates(subset=["course_name", "teacher", "course_id"])
 
 
@@ -284,6 +293,18 @@ def load_seen_keys(path: Path) -> set[tuple[str, str]]:
     except Exception as e:
         log.warning("讀取既有輸出失敗，將從頭寫: %s", e)
         return set()
+
+
+def teachers_from_detail(path: Path) -> set[str]:
+    """從一個 detailed CSV 抽出所有 teachers（用於 --skip-teachers-from）。"""
+    out: set[str] = set()
+    if not path.exists():
+        return out
+    df = pd.read_csv(path, dtype=str).fillna("")
+    for raw in df["教師"]:
+        for t in _clean_teacher(raw):
+            out.add(t)
+    return out
 
 
 def open_writer(path: Path):
@@ -310,26 +331,41 @@ def main() -> None:
                     help="只處理指定教師（測試用，會覆蓋 --limit-teachers/--sample）")
     ap.add_argument("--max-pages", type=int, default=5,
                     help="每位教師搜尋頁數上限")
-    ap.add_argument("--input", type=Path, default=INPUT_CSV)
+    ap.add_argument("--input", action="append", type=Path, default=None,
+                    help="課程目錄 CSV (可重複指定多個學期);省略 = 預設 114-2 + 114-1")
+    ap.add_argument("--skip-teachers-from", action="append", type=Path, default=None,
+                    help="跳過這些 CSV 裡已有的教師（用於只跑新學期多出來的教師）")
     ap.add_argument("--output", type=Path, default=OUTPUT_CSV)
     args = ap.parse_args()
 
-    log.info("讀取課程表: %s", args.input)
-    courses_df = load_courses(args.input)
-    log.info("共 %d 筆 (課,師) 組合 / %d 位教師",
+    input_paths = args.input or [INPUT_CSV, EXTRA_INPUT_DEFAULT]
+    log.info("讀取課程表 (%d 個): %s", len(input_paths), [p.name for p in input_paths])
+    courses_df = load_courses(input_paths)
+    log.info("合併後 %d 筆 (課,師) 組合 / %d 位教師",
              len(courses_df), courses_df["teacher"].nunique())
 
     # 全 NTU 課程目錄（用於從標題抽取教師「現在沒在開」的舊課）
-    cat_names_desc, cat_name_to_course = load_full_catalog(args.input)
+    cat_names_desc, cat_name_to_course = load_full_catalog(input_paths)
     log.info("全目錄載入：%d 個獨立課名（用於標題抽取）", len(cat_name_to_course))
 
     seen = load_seen_keys(args.output)
     log.info("既有輸出已寫入 %d 筆，將略過", len(seen))
 
+    skip_teachers: set[str] = set()
+    for p in args.skip_teachers_from or []:
+        s = teachers_from_detail(p)
+        log.info("--skip-teachers-from %s: %d 位", p.name, len(s))
+        skip_teachers |= s
+
     if args.teacher:
         teachers = [args.teacher]
     else:
         teachers = sorted(courses_df["teacher"].unique())
+        if skip_teachers:
+            before = len(teachers)
+            teachers = [t for t in teachers if t not in skip_teachers]
+            log.info("跳過 %d 位已搜尋過的教師 → 剩 %d 位",
+                     before - len(teachers), len(teachers))
         if args.sample:
             rng = random.Random(args.seed)
             teachers = rng.sample(teachers, min(args.sample, len(teachers)))
