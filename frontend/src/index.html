@@ -147,6 +147,11 @@
                             <i class="fas fa-search"></i>
                             <input type="search" id="search-input" placeholder="搜尋課名 / 教師 / 課號…(按 / 快速 focus)">
                         </div>
+                        <div class="semester-tabs" id="filter-semester-tabs" role="tablist">
+                            <button class="semester-tab active" data-sem="">全部</button>
+                            <button class="semester-tab" data-sem="114-1">114-1 上學期</button>
+                            <button class="semester-tab" data-sem="114-2">114-2 下學期</button>
+                        </div>
                         <select id="filter-dept">
                             <option value="">全部系所</option>
                         </select>
@@ -170,6 +175,7 @@
                             <thead>
                                 <tr>
                                     <th class="check-cell"></th>
+                                    <th>學期</th>
                                     <th>課號</th>
                                     <th>課名</th>
                                     <th>教師</th>
@@ -181,7 +187,7 @@
                                 </tr>
                             </thead>
                             <tbody id="results-body">
-                                <tr><td colspan="9" class="empty-row">點「套用篩選」開始搜尋課程</td></tr>
+                                <tr><td colspan="10" class="empty-row">點「套用篩選」開始搜尋課程</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -287,6 +293,7 @@
                             <table class="results-table">
                                 <thead>
                                     <tr>
+                                        <th>學期</th>
                                         <th>課號</th>
                                         <th>課名</th>
                                         <th>教師</th>
@@ -297,7 +304,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="wishlist-body">
-                                    <tr><td colspan="7" class="empty-row">想修清單還是空的</td></tr>
+                                    <tr><td colspan="8" class="empty-row">想修清單還是空的</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -410,10 +417,6 @@
             <h2 id="history-modal-title">加入修課歷史</h2>
             <div class="history-modal-course" id="history-modal-course"></div>
             <form id="history-form" novalidate>
-                <label class="auth-field">
-                    <span>學期 Semester <em style="color:#df3d31">*</em></span>
-                    <input type="text" id="history-semester" placeholder="例:113-1" required>
-                </label>
                 <label class="auth-field">
                     <span>成績 Grade (選填)</span>
                     <select id="history-grade">

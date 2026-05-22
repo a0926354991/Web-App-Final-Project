@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class CourseSummary(BaseModel):
+    semester: str
     serial_no: str
     course_code: str
     course_name: str
@@ -108,7 +109,18 @@ class FitBreakdown(BaseModel):
     explanation: str = ""
 
 
+class CourseRef(BaseModel):
+    """(semester, serial_no) 對應到一筆 course offering;用於批次 fit 等。"""
+    semester: str
+    serial_no: str
+
+
+class FitsBatchRequest(BaseModel):
+    items: list[CourseRef]
+
+
 class RecommendationItem(BaseModel):
+    semester: str
     serial_no: str
     course_code: str
     course_name: str
@@ -128,6 +140,7 @@ class TeacherStats(BaseModel):
 
 
 class TeacherCourseItem(BaseModel):
+    semester: str
     serial_no: str
     course_code: str
     course_name: str
@@ -147,16 +160,17 @@ class TeacherDetail(BaseModel):
 
 
 class HistoryAdd(BaseModel):
-    serial_no: str
+    """新增修課歷史。(semester, serial_no) 一起識別一筆 course offering。"""
     semester: str
+    serial_no: str
     grade: str | None = None
     notes: str | None = None
 
 
 class HistoryItem(BaseModel):
     id: int
-    serial_no: str
     semester: str
+    serial_no: str
     grade: str | None
     notes: str | None
     added_at: str
@@ -171,12 +185,14 @@ class HistoryItem(BaseModel):
 
 
 class WishlistAdd(BaseModel):
+    semester: str
     serial_no: str
     notes: str | None = None
 
 
 class WishlistItem(BaseModel):
     id: int
+    semester: str
     serial_no: str
     notes: str | None
     added_at: str

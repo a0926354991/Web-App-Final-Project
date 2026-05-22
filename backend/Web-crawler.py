@@ -326,6 +326,7 @@ def _extract_sections(full_text: str) -> dict[str, str]:
 
 
 async def collect_detail_urls(page: Page, need: int, start_url: str) -> list[str]:
+    print(f"[{_now_ts()}] 開搜尋頁 {start_url} ...")
     await page.goto(start_url, wait_until="networkidle", timeout=GOTO_TIMEOUT_MS)
     await page.wait_for_timeout(2000)
     base_url = page.url
@@ -333,9 +334,12 @@ async def collect_detail_urls(page: Page, need: int, start_url: str) -> list[str
         await page.wait_for_selector('a[href*="/courses/"]', timeout=60_000)
     except Exception:
         pass
+    print(f"[{_now_ts()}] 搜尋頁已載入,開始 scroll 收集 URL...")
 
     seen: dict[str, None] = {}
     stale_rounds = 0
+    scroll_count = 0
+    last_logged = 0
 
     while len(seen) < need and stale_rounds < 25:
         before = len(seen)
@@ -357,7 +361,14 @@ async def collect_detail_urls(page: Page, need: int, start_url: str) -> list[str
 
         await page.mouse.wheel(0, 6000)
         await page.wait_for_timeout(SCROLL_PAUSE_MS)
+        scroll_count += 1
 
+        # 每 10 次 scroll 或新增 ≥500 個 URL 就 log 一次進度
+        if scroll_count % 10 == 0 or len(seen) - last_logged >= 500:
+            print(f"[{_now_ts()}]   scroll #{scroll_count}: 已收集 {len(seen)}/{need} 個 URL (stale={stale_rounds})")
+            last_logged = len(seen)
+
+    print(f"[{_now_ts()}] URL 收集完成,共 {len(seen)} 個 (scroll {scroll_count} 次)")
     return list(seen.keys())[:need]
 
 

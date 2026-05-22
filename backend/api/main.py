@@ -41,6 +41,7 @@ from .schemas import (
     CourseListResponse,
     CourseSummary,
     FitBreakdown,
+    FitsBatchRequest,
     HistoryAdd,
     HistoryItem,
     TeacherCourseItem,
@@ -70,6 +71,44 @@ app = FastAPI(
 )
 
 
+_DEPT_CODES: dict[str, str] = {}  # dept_name → code (e.g. "中國文學系" → "1010")
+
+
+def _load_dept_codes() -> None:
+    """載入 dept name → code mapping:
+    - 學系代碼表.xls (大學部 80 個系)
+    - dept_codes_institute.json (碩/博士班/研究所手動對應表)
+    任一檔案不存在就跳過。"""
+    from pathlib import Path
+    import json as _json
+    data_dir = Path(DB_PATH).parent
+
+    xls_path = data_dir / "學系代碼表.xls"
+    if xls_path.exists():
+        try:
+            import pandas as _pd
+            df = _pd.read_excel(xls_path, dtype=str).fillna("")
+            for _, r in df.iterrows():
+                name = r.get("學系全稱", "").strip()
+                code = r.get("學系代碼", "").strip()
+                if name and code:
+                    _DEPT_CODES[name] = code
+        except Exception as e:
+            print(f"[dept_codes] xls 載入失敗: {e}")
+
+    json_path = data_dir / "dept_codes_institute.json"
+    if json_path.exists():
+        try:
+            with open(json_path, encoding="utf-8") as f:
+                m = _json.load(f)
+            for name, code in m.items():
+                if name.startswith("_") or not isinstance(code, str):
+                    continue
+                _DEPT_CODES[name.strip()] = code.strip()
+        except Exception as e:
+            print(f"[dept_codes] json 載入失敗: {e}")
+
+
 @app.on_event("startup")
 def _startup() -> None:
     conn = _sqlite3.connect(DB_PATH)
@@ -79,6 +118,7 @@ def _startup() -> None:
         init_indices(conn)
     finally:
         conn.close()
+    _load_dept_codes()
 
 # CORS: 從 env var ALLOWED_ORIGINS 讀 (comma-separated),沒設就允許本機 dev origin。
 # 正式部署請設定環境變數明確列出允許的 origin。
@@ -112,6 +152,7 @@ def list_courses(
     q: str | None = Query(None, description="關鍵字 (比對課名/教師/課號)"),
     dept: str | None = Query(None, description="開課系所完全比對"),
     credits: str | None = Query(None, description="學分數完全比對"),
+    semester: str | None = Query(None, description="學期 (e.g. 114-1, 114-2)"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     conn: sqlite3.Connection = Depends(get_conn),
@@ -124,8 +165,12 @@ def list_courses(
         like = f"%{q}%"
         params.extend([like, like, like])
     if dept:
-        where.append("department = ?")
-        params.append(dept)
+        # 用 substring 比對,讓「中國文學系」也能找到「中國文學系 / 文學院」這種多系所合開
+        where.append("department LIKE ?")
+        params.append(f"%{dept}%")
+    if semester:
+        where.append("semester = ?")
+        params.append(semester)
     if credits:
         where.append("credits = ?")
         params.append(credits)
@@ -138,11 +183,11 @@ def list_courses(
 
     rows = conn.execute(
         f"""
-        SELECT serial_no, course_code, course_name, teacher,
+        SELECT semester, serial_no, course_code, course_name, teacher,
                department, credits, schedule_time, language
         FROM courses
         {where_sql}
-        ORDER BY course_code, serial_no
+        ORDER BY semester DESC, course_code, serial_no
         LIMIT ? OFFSET ?
         """,
         [*params, limit, offset],
@@ -161,45 +206,51 @@ def list_courses(
     )
 
 
-@app.get("/courses/{serial_no}", response_model=CourseDetail)
+@app.get("/courses/{semester}/{serial_no}", response_model=CourseDetail)
 def get_course(
+    semester: str,
     serial_no: str,
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> CourseDetail:
     row = conn.execute(
-        "SELECT * FROM courses WHERE serial_no = ?", (serial_no,)
+        "SELECT * FROM courses WHERE semester = ? AND serial_no = ?",
+        (semester, serial_no),
     ).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail=f"course {serial_no} not found")
+        raise HTTPException(status_code=404, detail=f"course {semester}/{serial_no} not found")
     d = dict(row)
     d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
     return CourseDetail(**d)
 
 
-@app.get("/courses/{serial_no}/related")
+@app.get("/courses/{semester}/{serial_no}/related")
 def related_courses(
+    semester: str,
     serial_no: str,
     limit: int = Query(5, ge=1, le=20),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> list[dict]:
     row = conn.execute(
-        "SELECT 1 FROM courses WHERE serial_no = ?", (serial_no,)
+        "SELECT 1 FROM courses WHERE semester = ? AND serial_no = ?",
+        (semester, serial_no),
     ).fetchone()
     if row is None:
-        raise HTTPException(404, f"course {serial_no} not found")
-    return find_related_courses(serial_no, conn, limit=limit)
+        raise HTTPException(404, f"course {semester}/{serial_no} not found")
+    return find_related_courses((semester, serial_no), conn, limit=limit)
 
 
-@app.get("/courses/{serial_no}/reviews", response_model=ReviewListResponse)
+@app.get("/courses/{semester}/{serial_no}/reviews", response_model=ReviewListResponse)
 def get_course_reviews(
+    semester: str,
     serial_no: str,
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> ReviewListResponse:
     course = conn.execute(
-        "SELECT course_code FROM courses WHERE serial_no = ?", (serial_no,)
+        "SELECT course_code FROM courses WHERE semester = ? AND serial_no = ?",
+        (semester, serial_no),
     ).fetchone()
     if course is None:
-        raise HTTPException(status_code=404, detail=f"course {serial_no} not found")
+        raise HTTPException(status_code=404, detail=f"course {semester}/{serial_no} not found")
 
     course_code = course["course_code"]
     rows = conn.execute(
@@ -218,18 +269,37 @@ def get_course_reviews(
     )
 
 
-@app.get("/departments", response_model=list[str])
+@app.get("/departments", response_model=list[dict])
 def list_departments(
     conn: sqlite3.Connection = Depends(get_conn),
-) -> list[str]:
+) -> list[dict]:
+    """回傳系所代碼表內、且實際出現在 courses 表的單一系所 [{name, code}]。
+    多系所合開的字串 (e.g. "A / B") 不會直接列出,但 dept filter 用 substring 比對,
+    所以選「法律學系」就能找到「中國大陸研究學程 / 法律學系 / ...」這類。"""
+    out = []
+    for name, code in _DEPT_CODES.items():
+        # 確認該系所實際有出現在 courses 表 (含多系所合開的 substring)
+        row = conn.execute(
+            "SELECT 1 FROM courses WHERE department LIKE ? LIMIT 1",
+            (f"%{name}%",),
+        ).fetchone()
+        if row:
+            out.append({"name": name, "code": code})
+    # 沒代碼但常見的「研究所 / 學程」也補進來(出現課程數 >= 20 的)
     rows = conn.execute(
         """
-        SELECT DISTINCT department FROM courses
-        WHERE department != ''
-        ORDER BY department
+        SELECT department, COUNT(*) AS n FROM courses
+        WHERE department != '' AND department NOT LIKE '% / %'
+        GROUP BY department
+        HAVING n >= 20
         """
     ).fetchall()
-    return [r["department"] for r in rows]
+    seen = {d["name"] for d in out}
+    for r in rows:
+        if r["department"] not in seen:
+            out.append({"name": r["department"], "code": ""})
+    out.sort(key=lambda d: (d["code"] == "", d["code"], d["name"]))
+    return out
 
 
 @app.get("/teachers/{name}", response_model=TeacherDetail)
@@ -241,11 +311,16 @@ def get_teacher(
     if not name:
         raise HTTPException(400, "teacher name 不可空白")
 
-    # 一個 course_code 可能跨學期被同一教師開多次,以最新 (MAX(serial_no)) 為代表
+    # 一個 course_code 可能跨學期被同一教師開多次,挑最新學期的代表
     courses = conn.execute(
         """
         SELECT
-            MAX(c.serial_no) AS serial_no,
+            (SELECT semester FROM courses
+             WHERE teacher = ? AND course_code = c.course_code
+             ORDER BY semester DESC, serial_no DESC LIMIT 1) AS semester,
+            (SELECT serial_no FROM courses
+             WHERE teacher = ? AND course_code = c.course_code
+             ORDER BY semester DESC, serial_no DESC LIMIT 1) AS serial_no,
             c.course_code,
             c.course_name,
             c.department,
@@ -257,7 +332,7 @@ def get_teacher(
         GROUP BY c.course_code
         ORDER BY n_reviews DESC, c.course_code
         """,
-        (name,),
+        (name, name, name),
     ).fetchall()
 
     if not courses:
@@ -292,6 +367,7 @@ def get_teacher(
         stats=stats,
         courses=[
             TeacherCourseItem(
+                semester=r["semester"],
                 serial_no=r["serial_no"],
                 course_code=r["course_code"],
                 course_name=r["course_name"],
@@ -511,29 +587,33 @@ def my_recommendations(
     if not stats_map:
         return []
 
-    # 拿掉已修過的 course_code
     taken_codes = {
         r["course_code"]
         for r in conn.execute(
             """
             SELECT DISTINCT c.course_code
             FROM user_history h
-            JOIN courses c ON c.serial_no = h.serial_no
+            JOIN courses c ON c.semester = h.semester AND c.serial_no = h.serial_no
             WHERE h.user_id = ?
             """,
             (current["id"],),
         ).fetchall()
     }
 
-    # 對每個有評價的 course_code, 挑一個代表 serial_no (最新的 = 流水號最大)
+    # 每個 course_code 取最新學期的代表 (semester, serial_no)
     placeholders = ",".join("?" * len(stats_map))
     reps = conn.execute(
         f"""
-        SELECT course_code, MAX(serial_no) AS serial_no,
-               course_name, teacher, department, credits
-        FROM courses
-        WHERE course_code IN ({placeholders})
-        GROUP BY course_code
+        SELECT c.semester, c.serial_no, c.course_code,
+               c.course_name, c.teacher, c.department, c.credits
+        FROM courses c
+        JOIN (
+            SELECT course_code, MAX(semester || '_' || serial_no) AS marker
+            FROM courses
+            WHERE course_code IN ({placeholders})
+            GROUP BY course_code
+        ) m ON m.course_code = c.course_code
+            AND m.marker = c.semester || '_' || c.serial_no
         """,
         list(stats_map.keys()),
     ).fetchall()
@@ -543,10 +623,12 @@ def my_recommendations(
         code = r["course_code"]
         if code in taken_codes:
             continue
-        fit = compute_fit(profile, stats_map.get(code), r["serial_no"])
+        course_key = (r["semester"], r["serial_no"])
+        fit = compute_fit(profile, stats_map.get(code), course_key)
         scored.append((
             fit["total"],
             RecommendationItem(
+                semester=r["semester"],
                 serial_no=r["serial_no"],
                 course_code=code,
                 course_name=r["course_name"],
@@ -561,18 +643,19 @@ def my_recommendations(
     return [item for _, item in scored[:limit]]
 
 
-@app.get("/me/fit/{serial_no}", response_model=FitBreakdown)
+@app.get("/me/fit/{semester}/{serial_no}", response_model=FitBreakdown)
 def my_fit(
+    semester: str,
     serial_no: str,
     current: sqlite3.Row = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> FitBreakdown:
     course = conn.execute(
-        "SELECT course_code, course_name, department FROM courses WHERE serial_no = ?",
-        (serial_no,),
+        "SELECT course_code FROM courses WHERE semester = ? AND serial_no = ?",
+        (semester, serial_no),
     ).fetchone()
     if course is None:
-        raise HTTPException(404, f"course {serial_no} not found")
+        raise HTTPException(404, f"course {semester}/{serial_no} not found")
 
     profile = _load_profile_dict(conn, current["id"])
     stats = conn.execute(
@@ -589,27 +672,29 @@ def my_fit(
     ).fetchone()
     stats_dict = dict(stats) if stats and stats["n_reviews"] > 0 else None
 
-    fit = compute_fit(profile, stats_dict, serial_no)
+    fit = compute_fit(profile, stats_dict, (semester, serial_no))
     return FitBreakdown(**fit)
 
 
 @app.post("/me/fits", response_model=dict[str, FitBreakdown])
 def my_fits_batch(
-    serial_nos: list[str],
+    body: FitsBatchRequest,
     current: sqlite3.Row = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> dict[str, FitBreakdown]:
-    """批次拿一組 serial_no 的 fit (供探索頁表格用)。"""
-    if not serial_nos:
+    """批次拿一組 (semester, serial_no) 的 fit (供探索頁表格用)。
+    回傳 key = "{semester}__{serial_no}"。"""
+    items = body.items or []
+    if not items:
         return {}
-    placeholders = ",".join("?" * len(serial_nos))
+
+    conds = " OR ".join("(semester=? AND serial_no=?)" for _ in items)
+    args: list[str] = []
+    for it in items:
+        args.extend([it.semester, it.serial_no])
     rows = conn.execute(
-        f"""
-        SELECT serial_no, course_code
-        FROM courses
-        WHERE serial_no IN ({placeholders})
-        """,
-        serial_nos,
+        f"SELECT semester, serial_no, course_code FROM courses WHERE {conds}",
+        args,
     ).fetchall()
 
     profile = _load_profile_dict(conn, current["id"])
@@ -617,8 +702,9 @@ def my_fits_batch(
 
     out: dict[str, FitBreakdown] = {}
     for r in rows:
-        fit = compute_fit(profile, stats_map.get(r["course_code"]), r["serial_no"])
-        out[r["serial_no"]] = FitBreakdown(**fit)
+        key = f"{r['semester']}__{r['serial_no']}"
+        fit = compute_fit(profile, stats_map.get(r["course_code"]), (r["semester"], r["serial_no"]))
+        out[key] = FitBreakdown(**fit)
     return out
 
 
@@ -634,10 +720,10 @@ def list_my_history(
 ) -> list[HistoryItem]:
     rows = conn.execute(
         """
-        SELECT h.id, h.serial_no, h.semester, h.grade, h.notes, h.added_at,
+        SELECT h.id, h.semester, h.serial_no, h.grade, h.notes, h.added_at,
                c.course_code, c.course_name, c.teacher, c.credits, c.department
         FROM user_history h
-        LEFT JOIN courses c ON c.serial_no = h.serial_no
+        LEFT JOIN courses c ON c.semester = h.semester AND c.serial_no = h.serial_no
         WHERE h.user_id = ?
         ORDER BY h.semester DESC, h.added_at DESC
         """,
@@ -652,31 +738,35 @@ def add_to_history(
     current: sqlite3.Row = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> HistoryItem:
+    if not body.semester.strip() or not body.serial_no.strip():
+        raise HTTPException(400, "semester / serial_no 為必填")
     course = conn.execute(
-        "SELECT 1 FROM courses WHERE serial_no = ?", (body.serial_no,)
+        "SELECT 1 FROM courses WHERE semester = ? AND serial_no = ?",
+        (body.semester, body.serial_no),
     ).fetchone()
     if course is None:
-        raise HTTPException(404, f"course {body.serial_no} not found")
-    if not body.semester.strip():
-        raise HTTPException(400, "semester 為必填")
+        raise HTTPException(404, f"course {body.semester}/{body.serial_no} not found")
 
-    cur = conn.execute(
-        """
-        INSERT INTO user_history (user_id, serial_no, semester, grade, notes)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (current["id"], body.serial_no, body.semester.strip(),
-         (body.grade or None), (body.notes or None)),
-    )
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO user_history (user_id, semester, serial_no, grade, notes)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (current["id"], body.semester.strip(), body.serial_no.strip(),
+             (body.grade or None), (body.notes or None)),
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "已在修課歷史中")
     conn.commit()
     new_id = cur.lastrowid
 
     row = conn.execute(
         """
-        SELECT h.id, h.serial_no, h.semester, h.grade, h.notes, h.added_at,
+        SELECT h.id, h.semester, h.serial_no, h.grade, h.notes, h.added_at,
                c.course_code, c.course_name, c.teacher, c.credits, c.department
         FROM user_history h
-        LEFT JOIN courses c ON c.serial_no = h.serial_no
+        LEFT JOIN courses c ON c.semester = h.semester AND c.serial_no = h.serial_no
         WHERE h.id = ?
         """,
         (new_id,),
@@ -707,6 +797,7 @@ def delete_history(
 def _wishlist_row_to_item(row: sqlite3.Row) -> WishlistItem:
     return WishlistItem(
         id=row["id"],
+        semester=row["semester"],
         serial_no=row["serial_no"],
         notes=row["notes"],
         added_at=row["added_at"],
@@ -725,10 +816,10 @@ def list_my_wishlist(
 ) -> list[WishlistItem]:
     rows = conn.execute(
         """
-        SELECT w.id, w.serial_no, w.notes, w.added_at,
+        SELECT w.id, w.semester, w.serial_no, w.notes, w.added_at,
                c.course_code, c.course_name, c.teacher, c.credits, c.department
         FROM user_wishlist w
-        LEFT JOIN courses c ON c.serial_no = w.serial_no
+        LEFT JOIN courses c ON c.semester = w.semester AND c.serial_no = w.serial_no
         WHERE w.user_id = ?
         ORDER BY w.added_at DESC
         """,
@@ -744,15 +835,16 @@ def add_to_wishlist(
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> WishlistItem:
     course = conn.execute(
-        "SELECT 1 FROM courses WHERE serial_no = ?", (body.serial_no,)
+        "SELECT 1 FROM courses WHERE semester = ? AND serial_no = ?",
+        (body.semester, body.serial_no),
     ).fetchone()
     if course is None:
-        raise HTTPException(404, f"course {body.serial_no} not found")
+        raise HTTPException(404, f"course {body.semester}/{body.serial_no} not found")
 
     try:
         cur = conn.execute(
-            "INSERT INTO user_wishlist (user_id, serial_no, notes) VALUES (?, ?, ?)",
-            (current["id"], body.serial_no, body.notes or None),
+            "INSERT INTO user_wishlist (user_id, semester, serial_no, notes) VALUES (?, ?, ?, ?)",
+            (current["id"], body.semester, body.serial_no, body.notes or None),
         )
     except sqlite3.IntegrityError:
         raise HTTPException(409, "已在想修清單中")
@@ -760,10 +852,10 @@ def add_to_wishlist(
 
     row = conn.execute(
         """
-        SELECT w.id, w.serial_no, w.notes, w.added_at,
+        SELECT w.id, w.semester, w.serial_no, w.notes, w.added_at,
                c.course_code, c.course_name, c.teacher, c.credits, c.department
         FROM user_wishlist w
-        LEFT JOIN courses c ON c.serial_no = w.serial_no
+        LEFT JOIN courses c ON c.semester = w.semester AND c.serial_no = w.serial_no
         WHERE w.id = ?
         """,
         (cur.lastrowid,),
