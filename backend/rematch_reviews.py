@@ -22,9 +22,12 @@ from pathlib import Path
 
 import pandas as pd
 
+import argparse
+
 DATA_DIR = Path(__file__).resolve().parent / "data"
 INPUT_RAW = DATA_DIR / "ntu_reviews_raw.csv"
 INPUT_DETAIL = DATA_DIR / "ntu_detailed_data.csv"
+EXTRA_DETAIL_DEFAULT = DATA_DIR / "ntu_detailed_data_114-1.csv"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -82,31 +85,49 @@ def find_new_matches(
     return new
 
 
-def load_teacher_to_courses(detail_path: Path) -> dict[str, list[dict]]:
-    """每位教師 → 該教師的所有課程列表。"""
-    df = pd.read_csv(detail_path, dtype=str).fillna("")
+def load_teacher_to_courses(detail_paths: list[Path]) -> dict[str, list[dict]]:
+    """每位教師 → 該教師的所有課程列表 (跨多個學期 CSV 合併,去重於 course_id+name)。"""
     out: dict[str, list[dict]] = collections.defaultdict(list)
-    for _, r in df.iterrows():
-        cname = r["課名"].strip()
-        cid = r["課號"].strip()
-        if not cname:
+    seen: dict[str, set[tuple[str, str]]] = collections.defaultdict(set)
+    for detail_path in detail_paths:
+        if not detail_path.exists():
+            log.warning("跳過不存在的目錄檔: %s", detail_path)
             continue
-        # 教師欄可能含多人或附註，重用 ptt_review_crawler 的清理邏輯（簡化版）
-        head = re.split(r"[。．]", r["教師"], maxsplit=1)[0]
-        for raw in re.split(r"[,，、/與及和]", head):
-            t = raw.strip()
-            if re.fullmatch(r"[一-鿿·．]{2,5}", t):
-                out[t].append({"course_name": cname, "course_id": cid})
+        log.info("讀 %s", detail_path.name)
+        df = pd.read_csv(detail_path, dtype=str).fillna("")
+        for _, r in df.iterrows():
+            cname = r["課名"].strip()
+            cid = r["課號"].strip()
+            if not cname:
+                continue
+            head = re.split(r"[。．]", r["教師"], maxsplit=1)[0]
+            for raw in re.split(r"[,，、/與及和]", head):
+                t = raw.strip()
+                if re.fullmatch(r"[一-鿿·．]{2,5}", t):
+                    key = (cid, cname)
+                    if key in seen[t]:
+                        continue
+                    seen[t].add(key)
+                    out[t].append({"course_name": cname, "course_id": cid})
     return out
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--detail", action="append", type=Path, default=None,
+                    help="課程目錄 CSV (可重複指定多個學期);省略 = 預設 114-2 + 114-1")
+    args = ap.parse_args()
+
+    detail_paths = args.detail or [INPUT_DETAIL, EXTRA_DETAIL_DEFAULT]
+
     log.info("讀取 raw reviews...")
     raw = pd.read_csv(INPUT_RAW, dtype=str).fillna("")
     log.info("既有 row 數: %d", len(raw))
 
-    log.info("讀取 detailed → 教師 → 課程映射...")
-    teacher_courses = load_teacher_to_courses(INPUT_DETAIL)
+    log.info("讀取 detailed (%d 個檔案) → 教師 → 課程映射...", len(detail_paths))
+    teacher_courses = load_teacher_to_courses(detail_paths)
+    log.info("共 %d 位教師 / %d 門課",
+             len(teacher_courses), sum(len(v) for v in teacher_courses.values()))
 
     # 既有 (post_url, course_id) 集合，用於去重
     seen_keys = set(zip(raw["post_url"], raw["course_id"]))
