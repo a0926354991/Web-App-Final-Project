@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台大個性化選課推薦與分析 App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --ntu-red: #9E1B32; --dark-blue: #002D62; --active-blue: #2196F3; 
+            --grey-bg: #F0F2F5; --btn-green: #4CAF50; --btn-red: #F44336; 
+            --status-green: #4CAF50; --card-tag-blue: #1976D2; 
+        }
+
+        body, html { font-family: Arial, "Microsoft JhengHei", sans-serif; margin: 0; padding: 0; height: 100vh; width: 100vw; overflow: hidden; background-color: var(--grey-bg); }
+        .app-container { display: flex; flex-direction: column; height: 100%; width: 100%; }
+
+        /* Header */
+        .app-header { height: 60px; background-color: #fff; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.05); z-index: 10; }
+        .hamburger { color: var(--ntu-red); font-size: 24px; cursor: pointer; border: none; background: none; padding: 0; margin-right: 20px; }
+        .logo-section { display: flex; align-items: center; flex-grow: 1; color: var(--ntu-red); }
+        .logo-placeholder { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--ntu-red); display: flex; justify-content: center; align-items: center; margin-right: 12px; font-size: 14px; font-weight: bold; }
+        .logo-section .zh-title { font-size: 1.1rem; font-weight: bold; }
+        .logo-section .en-title { font-size: 0.8rem; color: #555; }
+        .user-profile-header { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+        .default-avatar { font-size: 32px; color: #ccc; }
+
+        .main-layout { flex-grow: 1; display: flex; overflow: hidden; position: relative; }
+
+        /* Sidebar */
+        .sidebar { width: 260px; background-color: var(--dark-blue); color: white; display: flex; flex-direction: column; overflow-y: auto; transition: all 0.3s ease; z-index: 100; flex-shrink: 0;}
+        .sidebar-user { padding: 25px 20px; display: flex; flex-direction: column; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-user .user-name { font-weight: bold; font-size: 1.1rem; margin: 10px 0 5px 0;}
+        .sidebar-user .user-id { font-size: 0.85rem; margin-bottom: 12px; color: #aaa;}
+        .status-container { display: flex; align-items: center; font-size: 0.85rem; background: rgba(0,0,0,0.2); padding: 4px 12px; border-radius: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #888; margin-right: 8px; } 
+        .status-dot.active { background-color: var(--status-green); }
+        .sidebar-nav { flex-grow: 1; padding: 15px 0; }
+        .sidebar-item { display: flex; align-items: center; padding: 14px 20px; color: rgba(255,255,255,0.8); text-decoration: none; cursor: pointer; transition: background 0.2s; border-left: 4px solid transparent;}
+        .sidebar-item:hover { background-color: rgba(255,255,255,0.08); }
+        .sidebar-item i { margin-right: 15px; font-size: 1.2rem; width: 24px; text-align: center; }
+        .sidebar-item-text { display: flex; flex-direction: column; }
+        .sidebar-item-text .zh { font-size: 0.95rem; }
+        .sidebar-item-text .en { font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-top: 2px;}
+        .sidebar-item.active { background-color: rgba(255,255,255,0.1); color: white; border-left: 4px solid var(--active-blue); }
+
+        /* Main Content & Views */
+        .main-content { flex-grow: 1; overflow-y: auto; position: relative; }
+        .view-section { display: none; padding: 30px; animation: fadeIn 0.3s ease; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .dashboard-header { margin-bottom: 25px; border-bottom: 2px solid #ddd; padding-bottom: 10px;}
+        .dashboard-title { font-size: 1.8rem; color: #333; margin: 0; }
+        .card { background-color: white; border-radius: 12px; padding: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eaeaea; margin-bottom: 20px;}
+        .card-header { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; display: flex; justify-content: space-between; align-items: center;}
+        .card-title { font-size: 1.2rem; color: #222; margin: 0; }
+        
+        /* Empty States */
+        .empty-state { text-align: center; padding: 40px 20px; color: #888; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; border: 2px dashed #eee; border-radius: 8px;}
+        .empty-state i { font-size: 3rem; margin-bottom: 15px; color: #ccc; }
+
+        /* Layout Grids */
+        .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 25px; }
+        .radar-card { min-height: 450px; display: flex; flex-direction: column; }
+        .radar-container { flex-grow: 1; display: flex; justify-content: center; align-items: center; position: relative; width: 100%; min-height: 300px;}
+        .recommended-card { height: 100%; max-height: 600px; display: flex; flex-direction: column;}
+        .course-list { flex-grow: 1; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .course-card { background-color: #f8f9fa; border-radius: 8px; padding: 18px; border: 1px solid #e9ecef;}
+        .course-card-tag { background-color: var(--card-tag-blue); color: white; border-radius: 4px; padding: 4px 10px; font-size: 0.85rem; margin-bottom: 8px; display: inline-block; }
+
+        /* Forms, Buttons & Tables */
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        .form-control { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-family: inherit;}
+        .btn-primary { background-color: var(--active-blue); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 1rem; transition: 0.2s;}
+        .btn-success { background-color: var(--btn-green); color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; }
+        .btn-ntu { background-color: var(--ntu-red); color: white; border: none; padding: 12px 25px; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: bold; transition: 0.2s; display: flex; align-items: center; gap: 10px;}
+        .btn-ntu:hover { background-color: #7a1527; }
+        .btn-ntu:disabled { background-color: #d88fa0; cursor: not-allowed; }
+        
+        .history-input-row { display: grid; grid-template-columns: 1fr 2fr 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 20px; align-items: end;}
+        
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th, .data-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        .data-table th { background-color: #f4f4f4; color: #333; }
+        .data-table tr:nth-child(even){background-color: #f9f9f9;}
+
+        /* RWD */
+        @media (min-width: 993px) {
+            .sidebar.desktop-collapsed { width: 0; padding: 0; }
+            .sidebar.desktop-collapsed * { white-space: nowrap; opacity: 0; pointer-events: none; }
+        }
+        @media (max-width: 992px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .history-input-row { grid-template-columns: 1fr 1fr; }
+            .logo-section .en-title, .user-profile-header span { display: none; }
+            .sidebar { position: absolute; top: 0; bottom: 0; left: 0; transform: translateX(-100%); height: 100%; box-shadow: 2px 0 15px rgba(0,0,0,0.3); }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .btn-ntu { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+        <button class="hamburger" id="toggleBtn"><i class="fas fa-bars"></i></button>
+        <div class="logo-section">
+            <div class="logo-placeholder">NTU</div>
+            <div>
+                <div class="zh-title">台大個性化選課推薦與分析</div>
+                <div class="en-title">NTU Personalized Course Recommendation</div>
+            </div>
+        </div>
+        <div class="user-profile-header">
+            <i class="fas fa-user-circle default-avatar"></i>
+            <span id="header-name">訪客</span>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-user">
+                <i class="fas fa-user-circle fa-4x" style="color: #ccc;"></i>
+                <span class="user-name" id="sidebar-name">訪客</span>
+                <span class="user-id" id="sidebar-id">尚未建立檔案</span>
+                <div class="status-container"><div class="status-dot" id="status-dot"></div><span id="status-text">未設定</span></div>
+            </div>
+            <nav class="sidebar-nav">
+                <a class="sidebar-item active" data-target="view-dashboard">
+                    <i class="fas fa-home"></i><div class="sidebar-item-text"><span class="zh">儀表板首頁</span><span class="en">Dashboard</span></div>
+                </a>
+                <a class="sidebar-item" data-target="view-input">
+                    <i class="fas fa-user-edit"></i><div class="sidebar-item-text"><span class="zh">使用者資訊輸入</span><span class="en">User Info Input</span></div>
+                </a>
+                <a class="sidebar-item" data-target="view-history">
+                    <i class="fas fa-history"></i><div class="sidebar-item-text"><span class="zh">修課歷史紀錄</span><span class="en">History</span></div>
+                </a>
+                <a class="sidebar-item" data-target="view-discovery">
+                    <i class="fas fa-search"></i><div class="sidebar-item-text"><span class="zh">課程探索與篩選</span><span class="en">Course Discovery</span></div>
+                </a>
+                <a class="sidebar-item" data-target="view-analysis">
+                    <i class="fas fa-chart-line"></i><div class="sidebar-item-text"><span class="zh">個性化適合度分析</span><span class="en">Fit Analysis</span></div>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <!-- ====== 視圖 1：首頁儀表板 ====== -->
+            <div id="view-dashboard" class="view-section active">
+                <div class="dashboard-header"><h1 class="dashboard-title">儀表板 Dashboard</h1></div>
+                <div class="dashboard-grid">
+                    <div class="card radar-card">
+                        <div class="card-header"><h2 class="card-title">能力雷達圖</h2></div>
+                        <div class="radar-container">
+                            <canvas id="radarChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card recommended-card">
+                        <div class="card-header"><h2 class="card-title">空堂為您推薦</h2></div>
+                        <div class="course-list" id="recommendation-list">
+                            <div class="empty-state">
+                                <i class="fas fa-box-open"></i>
+                                <p>系統目前無資料<br><small>請先至「使用者資訊」或「修課紀錄」建立檔案</small></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ====== 視圖 2：使用者資訊輸入 ====== -->
+            <div id="view-input" class="view-section">
+                <div class="dashboard-header"><h1 class="dashboard-title">建立個人化檔案</h1></div>
+                <div class="card">
+                    <div class="card-header"><h2 class="card-title">基本資料設定</h2></div>
+                    <form id="profileForm">
+                        <div class="form-group">
+                            <label>使用者名稱 / 暱稱</label>
+                            <input type="text" id="input-name" class="form-control" placeholder="請輸入姓名">
+                        </div>
+                        <div class="form-group">
+                            <label>就讀科系</label>
+                            <input type="text" id="input-dept" class="form-control" placeholder="例如：外國語文學系">
+                        </div>
+                        <div class="form-group">
+                            <label>學號</label>
+                            <input type="text" id="input-id" class="form-control" placeholder="例如：B12345678">
+                        </div>
+                        <div class="form-group">
+                            <label>選課最高指導原則 (偏好)</label>
+                            <select id="input-pref" class="form-control">
+                                <option value="" disabled selected>請選擇一個偏好...</option>
+                                <option value="gpa">GPA 至上 (優先推薦給分甜的課)</option>
+                                <option value="learn">學到東西最重要 (優先推薦高評價扎實課)</option>
+                                <option value="health">維持身心健康 (優先推薦 Loading 輕的課)</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn-primary">儲存設定檔</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ====== 視圖 3：歷史紀錄 (新增自動匯入功能) ====== -->
+            <div id="view-history" class="view-section">
+                <div class="dashboard-header">
+                    <h1 class="dashboard-title">修課歷史紀錄</h1>
+                </div>
+
+                <!-- 自動匯入區塊 -->
+                <div style="margin-bottom: 30px; border-bottom: 2px dashed #ddd; padding-bottom: 25px;">
+                    <h3 style="margin-top: 0; color: #333;">第一步：快速匯入您的成績與學分</h3>
+                    <p style="color: #666; font-size: 0.9rem; margin-bottom: 15px;">系統將安全連線至台大 ePo 學習歷程檔案，自動為您帶入過去所有的修課紀錄，作為精準推薦的運算基礎。</p>
+                    <button type="button" id="autoImportBtn" class="btn-ntu">
+                        <i class="fas fa-sync-alt"></i> <span>從台大系統自動匯入修課紀錄</span>
+                    </button>
+                </div>
+
+                <!-- 手動輸入與表格區塊 -->
+                <div class="card">
+                    <div class="card-header"><h2 class="card-title">第二步：確認與手動新增</h2></div>
+                    <form id="historyForm" class="history-input-row">
+                        <div class="form-group" style="margin:0;"><label>學期</label><input type="text" id="h-sem" class="form-control" placeholder="112-1" required></div>
+                        <div class="form-group" style="margin:0;"><label>課程名稱</label><input type="text" id="h-name" class="form-control" placeholder="微積分" required></div>
+                        <div class="form-group" style="margin:0;"><label>類別</label><select id="h-type" class="form-control"><option>必修</option><option>選修</option><option>通識</option></select></div>
+                        <div class="form-group" style="margin:0;"><label>學分</label><input type="number" id="h-credit" class="form-control" value="3" min="1" max="6" required></div>
+                        <div class="form-group" style="margin:0;"><label>等第</label><select id="h-grade" class="form-control"><option>A+</option><option>A</option><option>A-</option><option>B+</option><option>B</option><option>B-</option><option>C</option></select></div>
+                        <button type="submit" class="btn-success" style="height: 40px;">手動新增</button>
+                    </form>
+
+                    <table class="data-table">
+                        <thead><tr><th>學期</th><th>課程名稱</th><th>類別</th><th>學分</th><th>等第</th></tr></thead>
+                        <tbody id="history-tbody">
+                            <tr id="history-empty"><td colspan="5" style="text-align: center; color: #888; padding: 20px;">目前無任何修課紀錄</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ====== 視圖 4：課程探索 ====== -->
+            <div id="view-discovery" class="view-section">
+                <div class="dashboard-header"><h1 class="dashboard-title">課程探索與條件篩選</h1></div>
+                <div style="display:flex; gap:10px; margin-bottom:20px;">
+                    <input type="text" id="searchInput" class="form-control" placeholder="搜尋課程...">
+                    <button class="btn-primary" onclick="alert('尚未匯入課程資料庫，請先自行建立資料庫')"><i class="fas fa-search"></i></button>
+                </div>
+                <div class="empty-state" style="min-height: 200px;">
+                    <i class="fas fa-search"></i>
+                    <p>請輸入條件進行搜尋</p>
+                </div>
+            </div>
+
+            <!-- ====== 視圖 5：適合度分析 ====== -->
+            <div id="view-analysis" class="view-section">
+                <div class="dashboard-header"><h1 class="dashboard-title">特定課程分析報告</h1></div>
+                <div class="empty-state">
+                    <i class="fas fa-chart-pie"></i>
+                    <p>請先至「探索」頁面選擇您想分析的課程</p>
+                </div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // === 前端狀態管理 ===
+    const appState = {
+        user: { name: "", dept: "", id: "", pref: "" },
+        historyData: [], // 儲存所有修課紀錄的陣列
+        hasProfile: false
+    };
+
+    // === UI 切換邏輯 (SPA) ===
+    const sidebar = document.getElementById('sidebar');
+    document.getElementById('toggleBtn').addEventListener('click', () => {
+        if (window.innerWidth <= 992) sidebar.classList.toggle('mobile-open');
+        else sidebar.classList.toggle('desktop-collapsed');
+    });
+
+    const views = document.querySelectorAll('.view-section');
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const target = this.getAttribute('data-target');
+            document.querySelectorAll('.sidebar-item').forEach(n => n.classList.remove('active'));
+            this.classList.add('active');
+            views.forEach(v => v.classList.remove('active'));
+            document.getElementById(target).classList.add('active');
+            if (window.innerWidth <= 992) sidebar.classList.remove('mobile-open');
+        });
+    });
+
+    // === 雷達圖初始化 ===
+    let radarChart;
+    function initRadar() {
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['數理邏輯', '文字表達', '程式實作', '人文素養', '團隊協作'],
+                datasets: [{
+                    label: '能力值',
+                    data: [0, 0, 0, 0, 0], 
+                    backgroundColor: 'rgba(33, 150, 243, 0.2)', 
+                    borderColor: 'rgba(33, 150, 243, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(33, 150, 243, 1)',
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { r: { suggestedMin: 0, suggestedMax: 100, ticks: { stepSize: 20, backdropColor: 'transparent'} } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+    initRadar();
+
+    // === 表單 1：儲存個人檔案 ===
+    document.getElementById('profileForm').addEventListener('submit', function(e) {
+        e.preventDefault(); 
+        appState.user.name = document.getElementById('input-name').value || "無名氏";
+        appState.user.dept = document.getElementById('input-dept').value || "未指定科系";
+        appState.user.id = document.getElementById('input-id').value || "未指定學號";
+        appState.user.pref = document.getElementById('input-pref').value;
+        appState.hasProfile = true;
+
+        document.getElementById('header-name').innerText = appState.user.name;
+        document.getElementById('sidebar-name').innerText = appState.user.name;
+        document.getElementById('sidebar-id').innerText = `${appState.user.dept} | ${appState.user.id}`;
+        document.getElementById('status-dot').classList.add('active');
+        document.getElementById('status-text').innerText = "已設定檔案";
+
+        if(appState.historyData.length === 0) updateDashboardMockData(); // 如果還沒匯入紀錄，給基本的假推薦
+        alert("設定儲存成功！");
+    });
+
+    // === 更新表格共用函數 ===
+    function renderHistoryTable() {
+        const tbody = document.getElementById('history-tbody');
+        tbody.innerHTML = ''; // 清空原本表格
+
+        if (appState.historyData.length === 0) {
+            tbody.innerHTML = '<tr id="history-empty"><td colspan="5" style="text-align: center; color: #888; padding: 20px;">目前無任何修課紀錄</td></tr>';
+            return;
+        }
+
+        appState.historyData.forEach(record => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${record.sem}</td><td>${record.name}</td><td>${record.type}</td><td>${record.credit}</td><td><strong style="color:var(--active-blue)">${record.grade}</strong></td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // === 表單 2：手動新增歷史紀錄 ===
+    document.getElementById('historyForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const newRecord = {
+            sem: document.getElementById('h-sem').value,
+            name: document.getElementById('h-name').value,
+            type: document.getElementById('h-type').value,
+            credit: document.getElementById('h-credit').value,
+            grade: document.getElementById('h-grade').value
+        };
+        appState.historyData.push(newRecord);
+        renderHistoryTable();
+        updateDashboardMockData(); // 有新紀錄就更新推薦
+        document.getElementById('h-name').value = ''; // 清空課名輸入框
+    });
+
+    // === 全新功能：自動匯入按鈕邏輯 ===
+    document.getElementById('autoImportBtn').addEventListener('click', function() {
+        const btn = this;
+        const btnText = btn.querySelector('span');
+        const btnIcon = btn.querySelector('i');
+
+        // 1. 呈現 Loading 狀態
+        btn.disabled = true;
+        btnText.innerText = "正在連線台大系統擷取資料中...";
+        btnIcon.classList.remove('fa-sync-alt');
+        btnIcon.classList.add('fa-spinner', 'fa-spin');
+
+        // 2. 模擬非同步請求 (等候 1.5 秒)
+        setTimeout(() => {
+            // 模擬從後端抓到的假成績資料
+            const mockFetchedData = [
+                { sem: "111-1", name: "計算機程式設計", type: "必修", credit: 3, grade: "A+" },
+                { sem: "111-1", name: "微積分一", type: "必修", credit: 4, grade: "A-" },
+                { sem: "111-2", name: "普通心理學", type: "通識", credit: 3, grade: "A" },
+                { sem: "112-1", name: "資料結構", type: "必修", credit: 3, grade: "B+" },
+                { sem: "112-1", name: "社會學丁", type: "通識", credit: 2, grade: "A+" }
+            ];
+
+            // 將新資料合併到前端狀態中
+            appState.historyData = [...appState.historyData, ...mockFetchedData];
+            
+            // 重新渲染表格
+            renderHistoryTable();
+            
+            // 同步更新首頁儀表板的分析與推薦
+            updateDashboardMockData(true);
+
+            // 3. 恢復按鈕狀態並跳出提示
+            btn.disabled = false;
+            btnText.innerText = "從台大系統自動匯入修課紀錄";
+            btnIcon.classList.remove('fa-spinner', 'fa-spin');
+            btnIcon.classList.add('fa-sync-alt');
+            
+            alert(`匯入成功！共匯入 ${mockFetchedData.length} 筆修課紀錄。\n系統已根據您的歷史成績，為您更新「能力雷達圖」與「推薦課程」。`);
+        }, 1500);
+    });
+
+    // === 動態更新 Dashboard (結合歷史紀錄的運算邏輯) ===
+    function updateDashboardMockData(hasImportedData = false) {
+        // 1. 更新雷達圖資料
+        // 如果有匯入資料，我們模擬分數高一點；如果沒有，隨機給個普通分數
+        const baseScore = appState.historyData.length > 0 ? 60 : 40;
+        const newData = Array.from({length: 5}, () => Math.floor(Math.random() * (100 - baseScore)) + baseScore);
+        radarChart.data.datasets[0].data = newData;
+        radarChart.update();
+
+        // 2. 更新推薦列表
+        const recList = document.getElementById('recommendation-list');
+        
+        if (appState.historyData.length > 0) {
+            // 根據匯入成績模擬的客製化推薦
+            recList.innerHTML = `
+                <div class="course-card" style="border-left: 4px solid #FFD700;">
+                    <div class="course-card-tag"><i class="fas fa-magic"></i> 基於修課歷程推薦</div>
+                    <div style="font-weight: bold; margin-bottom: 5px;">演算法 (Algorithm)</div>
+                    <div style="color: #666; font-size: 0.85rem;">因為您修過「資料結構」且成績達 B+，具備足夠先備知識。</div>
+                </div>
+                <div class="course-card" style="border-left: 4px solid var(--active-blue);">
+                    <div class="course-card-tag" style="background-color: var(--active-blue);">延伸通識</div>
+                    <div style="font-weight: bold; margin-bottom: 5px;">哲學概論</div>
+                    <div style="color: #666; font-size: 0.85rem;">您在「社會學丁」表現優異，此課程符合您的文商思考脈絡。</div>
+                </div>
+            `;
+        } else {
+            // 只有填寫基本資料時的通用推薦
+            recList.innerHTML = `
+                <div class="course-card">
+                    <div class="course-card-tag"><i class="fas fa-user"></i> 基於系所推薦</div>
+                    <div style="font-weight: bold; margin-bottom: 5px;">資料分析導論</div>
+                    <div style="color: #666; font-size: 0.85rem;">適合 ${appState.user.dept || '您系上'} 的學生</div>
+                </div>
+            `;
+        }
+    }
+
+</script>
+
+</body>
+</html>
