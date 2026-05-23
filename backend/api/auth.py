@@ -24,10 +24,25 @@ _PBKDF2_ITER = 200_000
 # Session 有效期 (秒) — 30 天
 SESSION_TTL_SECONDS = 30 * 24 * 3600
 
-# Login rate limit: 同一 IP 60 秒內超過 N 次 → 429
+# 密碼最小長度 + 須同時含字母與數字
+PASSWORD_MIN_LENGTH = 8
+
+
+def validate_password_strength(password: str) -> None:
+    """密碼必須 >= 8 字元且同時含字母與數字；不符回 400。"""
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise HTTPException(400, f"password 至少 {PASSWORD_MIN_LENGTH} 個字元")
+    has_letter = any(c.isalpha() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    if not (has_letter and has_digit):
+        raise HTTPException(400, "password 必須同時包含字母與數字")
+
+
+# Login rate limit: 同一 (IP, username) 60 秒內超過 N 次 → 429
+# 加上 username 維度，避免校園共享 IP 互相誤殺；同時對單帳號暴力破解也有上限
 _LOGIN_RATE_WINDOW = 60.0
 _LOGIN_RATE_MAX = 8
-_login_attempts: dict[str, deque[float]] = defaultdict(deque)
+_login_attempts: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
 
 def hash_password(password: str) -> tuple[str, str]:
@@ -188,11 +203,13 @@ def get_current_user(
     return row
 
 
-def check_login_rate_limit(request: Request) -> None:
-    """同一 client IP 60 秒內最多 _LOGIN_RATE_MAX 次 login 嘗試。"""
+def check_login_rate_limit(request: Request, username: str = "") -> None:
+    """同一 (client IP, username) 60 秒內最多 _LOGIN_RATE_MAX 次 login 嘗試。
+    username 為空（如解析失敗）時退回單純 IP-only 限速。"""
     ip = request.client.host if request.client else "unknown"
+    key = (ip, (username or "").strip().lower())
     now = time.monotonic()
-    q = _login_attempts[ip]
+    q = _login_attempts[key]
     while q and now - q[0] > _LOGIN_RATE_WINDOW:
         q.popleft()
     if len(q) >= _LOGIN_RATE_MAX:

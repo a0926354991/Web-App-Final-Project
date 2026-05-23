@@ -22,6 +22,7 @@ from __future__ import annotations
 import math
 import re
 import sqlite3
+import time
 from typing import Any
 
 WEIGHT_REC = 0.25
@@ -305,8 +306,21 @@ def compute_explanation(
 # =========================================================================
 
 
+# aggregate stats 快取 TTL（秒）— reviews_structured 變動頻率低，1 小時夠用
+_STATS_TTL_SECONDS = 3600
+
+
 def aggregate_course_stats(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    """回傳 {course_code: {avg_rec, avg_sweet, avg_workload, n_reviews}}"""
+    """回傳 {course_code: {avg_rec, avg_sweet, avg_workload, n_reviews}}
+
+    結果快取在模組級 _CACHE 內，TTL=1 小時，避免每次推薦 / 批次 fit 請求都
+    全表掃 reviews_structured。資料變動可呼叫 invalidate_stats_cache() 立即失效。
+    """
+    cached = _CACHE.get("stats_map")
+    cached_at = _CACHE.get("stats_map_at", 0.0)
+    if cached is not None and (time.monotonic() - cached_at) < _STATS_TTL_SECONDS:
+        return cached
+
     rows = conn.execute(
         """
         SELECT
@@ -320,7 +334,7 @@ def aggregate_course_stats(conn: sqlite3.Connection) -> dict[str, dict[str, Any]
         HAVING n_reviews > 0
         """
     ).fetchall()
-    return {
+    stats_map = {
         r["course_code"]: {
             "avg_rec": r["avg_rec"],
             "avg_sweet": r["avg_sweet"],
@@ -329,6 +343,15 @@ def aggregate_course_stats(conn: sqlite3.Connection) -> dict[str, dict[str, Any]
         }
         for r in rows
     }
+    _CACHE["stats_map"] = stats_map
+    _CACHE["stats_map_at"] = time.monotonic()
+    return stats_map
+
+
+def invalidate_stats_cache() -> None:
+    """手動失效 aggregate_course_stats 快取（重新 ingest 評價後可呼叫）。"""
+    _CACHE.pop("stats_map", None)
+    _CACHE.pop("stats_map_at", None)
 
 
 def compute_fit(

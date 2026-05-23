@@ -24,6 +24,7 @@ from .auth import (
     hash_password,
     init_auth_tables,
     new_token,
+    validate_password_strength,
     verify_password,
 )
 from .db import DB_PATH, get_conn
@@ -120,10 +121,23 @@ def _startup() -> None:
         conn.close()
     _load_dept_codes()
 
-# CORS: 從 env var ALLOWED_ORIGINS 讀 (comma-separated),沒設就允許本機 dev origin。
-# 正式部署請設定環境變數明確列出允許的 origin。
+# CORS: 從 env var ALLOWED_ORIGINS 讀 (comma-separated)。
+# - production (APP_ENV=production) 必須明確設定，否則啟動時 fail-fast，
+#   避免漏設導致預設的 localhost 名單被部署到雲端
+# - dev 沒設就用 localhost 預設值
+_app_env = os.environ.get("APP_ENV", "development").strip().lower()
 _env_origins = os.environ.get("ALLOWED_ORIGINS", "").strip()
-if _env_origins == "*":
+
+if _app_env == "production":
+    if not _env_origins:
+        raise RuntimeError(
+            "APP_ENV=production 必須設定 ALLOWED_ORIGINS 環境變數 "
+            "(e.g. ALLOWED_ORIGINS=https://your.domain)"
+        )
+    if _env_origins == "*":
+        raise RuntimeError("production 不允許 ALLOWED_ORIGINS=*,請列出明確的 origin")
+    allow_origins = [o.strip() for o in _env_origins.split(",") if o.strip()]
+elif _env_origins == "*":
     allow_origins = ["*"]
 elif _env_origins:
     allow_origins = [o.strip() for o in _env_origins.split(",") if o.strip()]
@@ -398,8 +412,7 @@ def register(
     username = body.username.strip()
     if len(username) < 2:
         raise HTTPException(400, "username 至少 2 個字元")
-    if len(body.password) < 6:
-        raise HTTPException(400, "password 至少 6 個字元")
+    validate_password_strength(body.password)
 
     exists = conn.execute(
         "SELECT 1 FROM users WHERE username = ?", (username,)
@@ -434,10 +447,11 @@ def login(
     request: Request,
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> AuthResponse:
-    check_login_rate_limit(request)
+    username = body.username.strip()
+    check_login_rate_limit(request, username)
     row = conn.execute(
         "SELECT id, username, password_hash, salt, created_at FROM users WHERE username = ?",
-        (body.username.strip(),),
+        (username,),
     ).fetchone()
     if row is None or not verify_password(body.password, row["password_hash"], row["salt"]):
         raise HTTPException(401, "帳號或密碼錯誤")
