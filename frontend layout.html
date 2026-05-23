@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台大個性化選課推薦與分析 App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            /* 顏色變量 */
+            --ntu-red: #9E1B32;
+            /* 台大紅 */
+            --dark-blue: #002D62;
+            /* 深藍色 (側欄) */
+            --active-blue: #2196F3;
+            /* 選中項藍色 */
+            --grey-bg: #F0F2F5;
+            /* 背景灰 */
+            --btn-green: #4CAF50;
+            /* 按鈕綠 */
+            --btn-red: #df3d31;
+            /* 按鈕紅 */
+            --status-green: #84e687;
+            /* 狀態綠 */
+            --card-tag-blue: #1976D2;
+            /* 課程卡片大標籤藍 */
+        }
+
+        /* 讓畫面直接填滿整個視窗 */
+        body,
+        html {
+            font-family: Arial, "Microsoft JhengHei", sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            /* 防止整個頁面滾動，滾動條留給內容區 */
+            background-color: var(--grey-bg);
+        }
+
+        /* 應用主體佈局 */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 頂部導航列 (Header) */
+        .app-header {
+            height: 60px;
+            background-color: #fff;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            border-bottom: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            z-index: 10;
+        }
+
+        .hamburger {
+            color: var(--ntu-red);
+            font-size: 24px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 0;
+            margin-right: 20px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            flex-grow: 1;
+            color: var(--ntu-red);
+        }
+
+        .logo-placeholder {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid var(--ntu-red);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-right: 12px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .logo-section .zh-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+
+        .logo-section .en-title {
+            font-size: 0.8rem;
+            color: #555;
+        }
+
+        .user-profile-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .user-profile-header img {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: #ccc;
+            object-fit: cover;
+        }
+
+        /* 側欄與主內容的排版 */
+        .main-layout {
+            flex-grow: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+            /* 為了手機版的絕對定位做準備 */
+        }
+
+        /* 側欄 (Sidebar) */
+        .sidebar {
+            width: 260px;
+            background-color: var(--dark-blue);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .sidebar-user {
+            padding: 25px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-user img {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background-color: #ccc;
+            margin-bottom: 12px;
+        }
+
+        .sidebar-user .user-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+
+        .sidebar-user .user-id {
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+            color: #aaa;
+        }
+
+        .status-container {
+            display: flex;
+            align-items: center;
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-dot.online {
+            background-color: var(--status-green);
+        }
+
+        .status-dot.waiting {
+            background-color: #ff9800;
+        }
+
+        .status-dot.offline {
+            background-color: #ee7c7c;
+        }
+
+        .sidebar-nav {
+            flex-grow: 1;
+            padding: 15px 0;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 20px;
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .sidebar-item:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .sidebar-item i {
+            margin-right: 15px;
+            font-size: 1.2rem;
+            width: 24px;
+            text-align: center;
+        }
+
+        .sidebar-item-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-item-text .zh {
+            font-size: 0.95rem;
+        }
+
+        .sidebar-item-text .en {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 2px;
+        }
+
+        .sidebar-item.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            border-left: 4px solid var(--active-blue);
+            padding-left: 16px;
+        }
+
+        .account-section {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .account-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: bold;
+            font-size: 0.95rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            text-decoration: none;
+            transition: opacity 0.2s;
+        }
+
+        .account-btn:hover {
+            opacity: 0.9;
+        }
+
+        .account-btn-login {
+            background-color: var(--btn-green);
+        }
+
+        .account-btn-logout {
+            background-color: var(--btn-red);
+        }
+
+        /* 主內容區域 (Main Content) */
+        .main-content {
+            flex-grow: 1;
+            padding: 30px;
+            overflow-y: auto;
+            /* 內容過多時可向下滾動 */
+        }
+
+        .dashboard-header {
+            margin-bottom: 25px;
+        }
+
+        .dashboard-title {
+            font-size: 1.8rem;
+            color: #333;
+            margin: 0;
+        }
+
+        /* 網格佈局：控制卡片排列 */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            /* 電腦版：左邊佔 2 份，右邊佔 1 份 */
+            gap: 25px;
+        }
+
+        /* 卡片共用樣式 */
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #eaeaea;
+        }
+
+        .card-header {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            color: #222;
+            margin: 0;
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .card-title .en {
+            font-size: 0.85rem;
+            color: #888;
+            font-weight: normal;
+        }
+
+        /* 雷達圖卡片 */
+        .radar-card {
+            min-height: 450px;
+        }
+
+        .radar-container {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 300px;
+        }
+
+        /* 推薦課程卡片 */
+        .recommended-card {
+            height: 100%;
+            max-height: 600px;
+        }
+
+        .course-list {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .course-card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #e9ecef;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+
+        .course-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .course-card-tag {
+            background-color: var(--card-tag-blue);
+            color: white;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+            display: inline-block;
+            max-width: fit-content;
+            font-weight: bold;
+        }
+
+        .course-card-subtags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .course-card-subtags .tag {
+            color: #1976D2;
+            font-size: 0.8rem;
+            background: #e3f2fd;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+
+        .course-card-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            border-top: 1px dashed #ddd;
+            padding-top: 10px;
+        }
+
+        .course-card-details span {
+            color: #666;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* =========================================
+           RWD 響應式設計 (手機與平板適配) 
+           ========================================= */
+
+        /* 電腦版側欄收起狀態 */
+        @media (min-width: 993px) {
+            .sidebar.desktop-collapsed {
+                width: 0;
+                padding: 0;
+            }
+
+            /* 隱藏頭像文字以避免擠壓 */
+            .sidebar.desktop-collapsed * {
+                white-space: nowrap;
+                opacity: 0;
+                pointer-events: none;
+            }
+        }
+
+        /* 平板與手機版 (< 992px) */
+        @media (max-width: 992px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                /* 卡片改成上下排列 */
+            }
+
+            .radar-card {
+                min-height: 400px;
+            }
+
+            /* 隱藏標題英文版節省空間 */
+            .logo-section .en-title {
+                display: none;
+            }
+
+            .user-profile-header span {
+                display: none;
+                /* 頂部只留頭像 */
+            }
+
+            /* 手機版側欄改為滑出式 (Off-canvas) */
+            .sidebar {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                transform: translateX(-100%);
+                /* 預設藏在畫面左邊外 */
+                height: 100%;
+                box-shadow: 2px 0 15px rgba(0, 0, 0, 0.3);
+            }
+
+            .sidebar.mobile-open {
+                transform: translateX(0);
+                /* 滑入畫面 */
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <header class="app-header">
+            <button class="hamburger" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+            <div class="logo-section">
+                <div class="logo-placeholder">NTU</div>
+                <div>
+                    <div class="zh-title">台大個性化選課推薦與分析</div>
+                    <div class="en-title">NTU Personalized Course Recommendation</div>
+                </div>
+            </div>
+            <div class="user-profile-header">
+                <img src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
+                <span>未登入，請先登入</span>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-user">
+                    <img src="https://ui-avatars.com/api/?name=未登入&background=cccccc&color=000000" alt="avatar">
+                    <span class="user-name">未登入</span>
+                    <span class="user-id">等待登入後顯示</span>
+                    <div class="status-container">
+                        <div class="status-dot waiting"></div>
+                        <span>等待登入 Waiting for login</span>
+                    </div>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="#" class="sidebar-item active">
+                        <i class="fas fa-user-edit"></i>
+                        <div class="sidebar-item-text">
+                            <span class="zh">使用者資訊輸入</span>
+                            <span class="en">User Info Input</span>
+                        </div>
+                    </a>
+                    <a href="#" class="sidebar-item">
+                        <i class="fas fa-history"></i>
+                        <div class="sidebar-item-text">
+                            <span class="zh">修課歷史紀錄</span>
+                            <span class="en">History</span>
+                        </div>
+                    </a>
+                    <a href="#" class="sidebar-item">
+                        <i class="fas fa-search"></i>
+                        <div class="sidebar-item-text">
+                            <span class="zh">課程探索與篩選</span>
+                            <span class="en">Course Discovery</span>
+                        </div>
+                    </a>
+                    <a href="#" class="sidebar-item">
+                        <i class="fas fa-chart-line"></i>
+                        <div class="sidebar-item-text">
+                            <span class="zh">個性化適合度分析</span>
+                            <span class="en">Fit Analysis</span>
+                        </div>
+                    </a>
+                </nav>
+                <div class="account-section">
+                    <a href="#" class="account-btn account-btn-login">
+                        <i class="fas fa-sign-in-alt"></i> 登入 Login
+                    </a>
+                    <a href="#" class="account-btn account-btn-logout">
+                        <i class="fas fa-sign-out-alt"></i> 登出 Logout
+                    </a>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <div class="dashboard-header">
+                    <h1 class="dashboard-title">儀表板 Dashboard</h1>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card radar-card">
+                        <div class="card-header">
+                            <h2 class="card-title">你的能力雷達圖 <span class="en">Your Skill Radar</span></h2>
+                        </div>
+                        <div class="radar-container">
+                            <canvas id="radarChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card recommended-card">
+                        <div class="card-header">
+                            <h2 class="card-title">為您推薦 <span class="en">Recommended</span></h2>
+                        </div>
+                        <div class="course-list">
+                            <div class="course-card">
+                                <div class="course-card-tag"><i class="fas fa-star" style="color:#FFD700"></i> 極度推薦
+                                </div>
+                                <div class="course-card-subtags">
+                                    <span class="tag">#給分甜</span>
+                                    <span class="tag">#期末報告</span>
+                                    <span class="tag">#不點名</span>
+                                    <span class="tag">#NLP</span>
+                                </div>
+                                <div class="course-card-details">
+                                    <span><i class="fas fa-book"></i> 自然語言處理</span>
+                                    <span><i class="fas fa-clock"></i> 3 學分</span>
+                                </div>
+                            </div>
+                            <div class="course-card">
+                                <div class="course-card-tag">適合度 85%</div>
+                                <div class="course-card-subtags">
+                                    <span class="tag">#邏輯訓練</span>
+                                    <span class="tag">#作業偏難</span>
+                                    <span class="tag">#扎實</span>
+                                </div>
+                                <div class="course-card-details">
+                                    <span><i class="fas fa-book"></i> 資料結構與演算法</span>
+                                    <span><i class="fas fa-clock"></i> 3 學分</span>
+                                </div>
+                            </div>
+                            <div class="course-card">
+                                <div class="course-card-tag">填補空堂</div>
+                                <div class="course-card-subtags">
+                                    <span class="tag">#輕鬆聽講</span>
+                                    <span class="tag">#無期中考</span>
+                                </div>
+                                <div class="course-card-details">
+                                    <span><i class="fas fa-book"></i> 藝術史導論</span>
+                                    <span><i class="fas fa-clock"></i> 2 學分</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // 漢堡選單的開關邏輯 (判斷螢幕寬度來決定套用哪個 CSS Class)
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const isMobile = window.innerWidth <= 992;
+
+            if (isMobile) {
+                // 手機版：滑出/收起
+                sidebar.classList.toggle('mobile-open');
+            } else {
+                // 電腦版：壓縮/展開
+                sidebar.classList.toggle('desktop-collapsed');
+            }
+        }
+
+        // 點擊主畫面時，如果手機版側欄是開著的，就自動收起來
+        document.querySelector('.main-content').addEventListener('click', function () {
+            const sidebar = document.getElementById('sidebar');
+            if (window.innerWidth <= 992 && sidebar.classList.contains('mobile-open')) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+
+        // 初始化雷達圖 (Chart.js)
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        const radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['數理邏輯', '文字表達', '程式實作', '人文素養', '團隊協作'],
+                datasets: [{
+                    label: '目前能力值',
+                    data: [85, 65, 90, 50, 75],
+                    backgroundColor: 'rgba(33, 150, 243, 0.2)', /* 半透明藍色 */
+                    borderColor: 'rgba(33, 150, 243, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(33, 150, 243, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(33, 150, 243, 1)',
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false, // 允許圖表隨著容器變形
+                scales: {
+                    r: {
+                        angleLines: { color: 'rgba(0,0,0,0.1)' },
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        suggestedMin: 0,
+                        suggestedMax: 100,
+                        ticks: {
+                            stepSize: 20,
+                            color: '#888',
+                            backdropColor: 'transparent' // 移除數字背後的白色框
+                        },
+                        pointLabels: {
+                            font: {
+                                size: 14,
+                                family: '"Microsoft JhengHei", Arial, sans-serif'
+                            },
+                            color: '#444'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: 10,
+                        bodyFont: { size: 14 }
+                    }
+                }
+            }
+        });
+
+        // 讓側邊欄按鈕有切換 Active 的效果
+        const sidebarItems = document.querySelectorAll('.sidebar-item');
+        sidebarItems.forEach(item => {
+            item.addEventListener('click', function (e) {
+                e.preventDefault();
+                sidebarItems.forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+
+                // 點擊選單後，如果是手機版就自動收起側欄
+                if (window.innerWidth <= 992) {
+                    document.getElementById('sidebar').classList.remove('mobile-open');
+                }
+            });
+        });
+    </script>
+
+</body>
+
+</html>
