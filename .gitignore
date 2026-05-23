@@ -21,3 +21,6 @@ __pycache__/
 # SQLite 資料庫 (由 ingest 腳本產生)
 backend/data/*.db
 backend/data/*.db-journal
+
+# Skill driver 產生的截圖 (每次 smoke 重產,不入庫)
+.claude/skills/*/screenshots/
