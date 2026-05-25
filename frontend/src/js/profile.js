@@ -1,8 +1,8 @@
 // 使用者資訊輸入頁(能力 / 偏好 / 興趣)。
 import { ABILITY_FIELDS, PREF_FIELDS, INTEREST_OPTIONS } from './config.js';
 import { profileState } from './state.js';
-import { getToken, fetchProfile, saveProfile } from './api.js';
-import { toast } from './utils.js';
+import { getToken, fetchProfile, saveProfile, fetchSuggestedInterests } from './api.js';
+import { toast, escapeHtml } from './utils.js';
 import { updateRadarFromProfile } from './dashboard.js';
 
 const els = {
@@ -73,6 +73,34 @@ export async function renderProfileView() {
 }
 
 export function initProfile() {
+    document.getElementById('profile-ai-suggest').addEventListener('click', async () => {
+        if (!getToken()) {
+            toast('請先登入', 'warn');
+            return;
+        }
+        const slot = document.getElementById('profile-ai-suggest-result');
+        const btn = document.getElementById('profile-ai-suggest');
+        btn.disabled = true;
+        slot.innerHTML = '<div class="ai-summary-box" style="margin-top:10px"><span style="color:#888">AI 分析中…</span></div>';
+        try {
+            const resp = await fetchSuggestedInterests();
+            if (resp && resp.suggestions) {
+                slot.innerHTML = `<div class="ai-summary-box" style="margin-top:10px">
+                    <div class="ai-summary-label"><i class="fas fa-robot"></i> AI 建議的額外興趣</div>
+                    <div class="ai-summary-text" style="white-space:pre-wrap">${escapeHtml(resp.suggestions)}</div>
+                </div>`;
+            } else if (resp && resp.has_history === false) {
+                slot.innerHTML = '<div class="ai-summary-box" style="margin-top:10px;color:#999">尚無修課歷史,無法建議</div>';
+            } else {
+                slot.innerHTML = '<div class="ai-summary-box" style="margin-top:10px;color:#999">AI 服務暫時不可用(quota 限制或網路問題)</div>';
+            }
+        } catch (err) {
+            slot.innerHTML = '<div class="ai-summary-box" style="margin-top:10px;color:#c33">查詢失敗</div>';
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
     els.form.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!getToken()) return;

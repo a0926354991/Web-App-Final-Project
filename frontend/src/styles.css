@@ -2557,3 +2557,94 @@
         body.theme-dark .semester-tab:hover:not(.active) {
             background: rgba(255, 255, 255, 0.05);
         }
+
+/* AI features (summary box, balance advice, suggested interests) */
+.ai-summary-box {
+    background: linear-gradient(135deg, #f0f7ff 0%, #f5f0ff 100%);
+    border: 1px solid #d0e0ff;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 12px 0;
+}
+.ai-summary-label {
+    font-weight: 600;
+    color: #4a5fb8;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+}
+.ai-summary-label i { margin-right: 6px; }
+.ai-summary-text {
+    color: #333;
+    line-height: 1.6;
+    font-size: 0.92rem;
+}
+body.theme-dark .ai-summary-box {
+    background: linear-gradient(135deg, rgba(80,120,200,0.12) 0%, rgba(120,80,200,0.12) 100%);
+    border-color: rgba(120,140,200,0.3);
+}
+body.theme-dark .ai-summary-label { color: #aab5ff; }
+body.theme-dark .ai-summary-text { color: #ddd; }
+
+.ai-btn {
+    background: linear-gradient(135deg, #6680e0 0%, #8060d0 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin: 4px 2px;
+}
+.ai-btn:hover { opacity: 0.9; }
+.ai-btn:disabled { opacity: 0.5; cursor: wait; }
+.ai-btn i { margin-right: 4px; }
+
+.btn-ai-summarize {
+    background: none;
+    border: none;
+    color: #6680e0;
+    cursor: pointer;
+    padding: 4px 6px;
+    font-size: 0.95rem;
+}
+.btn-ai-summarize:hover { color: #4a5fb8; }
+.btn-ai-summarize:disabled { opacity: 0.4; cursor: wait; }
+
+/* 課表「課表內的課」: 時段 chip + 補時段 picker */
+.slot-row {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    align-items: center; margin-top: 6px;
+}
+.slot-chip {
+    background: #eef3ff;
+    border: 1px solid #c8d4f0;
+    border-radius: 12px;
+    padding: 2px 4px 2px 10px;
+    font-size: 0.82rem;
+    color: #345;
+    display: inline-flex; align-items: center; gap: 2px;
+}
+.slot-chip-x {
+    background: none; border: none; color: #889;
+    cursor: pointer; font-size: 1rem; line-height: 1;
+    padding: 0 6px;
+}
+.slot-chip-x:hover { color: #c33; }
+.slot-add-inline { display: inline-flex; gap: 4px; align-items: center; }
+.slot-add-inline select {
+    font-size: 0.8rem; padding: 2px 4px;
+    border: 1px solid #ccc; border-radius: 4px;
+}
+.btn-add-slot {
+    background: #6680e0; color: white; border: none;
+    border-radius: 4px; padding: 3px 8px; font-size: 0.8rem;
+    cursor: pointer;
+}
+.btn-add-slot:hover { opacity: 0.9; }
+
+body.theme-dark .slot-chip {
+    background: rgba(80,120,200,0.18); border-color: rgba(120,140,200,0.35); color: #cde;
+}
+body.theme-dark .slot-add-inline select {
+    background: #2a2e3a; color: #ddd; border-color: #444;
+}

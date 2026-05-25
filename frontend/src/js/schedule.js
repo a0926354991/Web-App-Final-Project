@@ -1,6 +1,6 @@
 // 我的課表 — localStorage 持久化 + 衝堂偵測 + 視覺化週課表 + PDF 匯出。
 import { SCHEDULE_KEY, WEEKDAY_LABELS, PERIOD_ORDER } from './config.js';
-import { fetchCourse } from './api.js';
+import { fetchCourse, fetchScheduleBalance, getToken } from './api.js';
 import { courseId, escapeHtml, escapeAttr, toast, exportToPDF } from './utils.js';
 import { openDrawer } from './drawer.js';
 
@@ -30,6 +30,24 @@ function addToSchedule(course) {
 function removeFromSchedule(id) {
     const s = getSchedule();
     delete s[id];
+    saveSchedule(s);
+}
+
+function addSlotToCourse(id, weekday, period) {
+    const s = getSchedule();
+    if (!s[id]) return;
+    s[id].slots = s[id].slots || [];
+    const exists = s[id].slots.some(([w, p]) => String(w) === String(weekday) && String(p) === String(period));
+    if (!exists) {
+        s[id].slots.push([Number(weekday), String(period)]);
+    }
+    saveSchedule(s);
+}
+
+function removeSlotFromCourse(id, weekday, period) {
+    const s = getSchedule();
+    if (!s[id] || !s[id].slots) return;
+    s[id].slots = s[id].slots.filter(([w, p]) => !(String(w) === String(weekday) && String(p) === String(period)));
     saveSchedule(s);
 }
 
@@ -89,18 +107,34 @@ export function renderScheduleView() {
 
     if (ids.length > 0) {
         listCard.hidden = false;
+        const wdOptions = WEEKDAY_LABELS.map((lbl, i) => `<option value="${i+1}">週${lbl}</option>`).join('');
+        const pOptions = PERIOD_ORDER.map(p => `<option value="${p}">第 ${p} 節</option>`).join('');
         listEl.innerHTML = ids.map(id => {
             const c = sched[id];
-            const slotText = (c.slots && c.slots.length)
-                ? c.slots.map(([wd, p]) => `週${WEEKDAY_LABELS[wd-1]}${p}`).join(', ')
-                : '無排定時段';
+            const slots = c.slots || [];
+            const slotChips = slots.length === 0
+                ? '<span style="color:#c80">無排定時段(請手動加)</span>'
+                : slots.map(([wd, p]) => `
+                    <span class="slot-chip">
+                        週${WEEKDAY_LABELS[wd-1]}${p}
+                        <button class="slot-chip-x" data-rm-slot data-id="${escapeAttr(id)}" data-wd="${wd}" data-p="${escapeAttr(p)}" title="移除此時段">×</button>
+                    </span>
+                `).join('');
             return `
                 <div class="schedule-course-item" data-id="${escapeAttr(id)}">
-                    <div>
+                    <div style="flex:1">
                         <div><strong>${escapeHtml(c.course_name)}</strong> <span style="color:#888">${escapeHtml(c.course_code || '')} · ${escapeHtml(c.semester || '')}</span></div>
-                        <div class="meta">${escapeHtml(c.teacher || '')} · ${slotText}</div>
+                        <div class="meta">${escapeHtml(c.teacher || '')}</div>
+                        <div class="slot-row">
+                            ${slotChips}
+                            <span class="slot-add-inline" data-id="${escapeAttr(id)}">
+                                <select class="slot-add-wd">${wdOptions}</select>
+                                <select class="slot-add-p">${pOptions}</select>
+                                <button class="btn-add-slot" data-id="${escapeAttr(id)}">+ 加時段</button>
+                            </span>
+                        </div>
                     </div>
-                    <button class="btn-remove-schedule" data-id="${escapeAttr(id)}" title="移除"><i class="fas fa-trash"></i></button>
+                    <button class="btn-remove-schedule" data-id="${escapeAttr(id)}" title="移除整門課"><i class="fas fa-trash"></i></button>
                 </div>
             `;
         }).join('');
@@ -114,6 +148,7 @@ export function renderScheduleView() {
     listEl.querySelectorAll('.schedule-course-item').forEach(el => {
         el.addEventListener('click', (e) => {
             if (e.target.closest('.btn-remove-schedule')) return;
+            if (e.target.closest('.slot-row')) return;  // 點時段區域不開 drawer
             openDrawer(el.dataset.id);
         });
     });
@@ -123,6 +158,24 @@ export function renderScheduleView() {
             removeFromSchedule(btn.dataset.id);
             renderScheduleView();
             refreshScheduleButtons();
+        });
+    });
+    listEl.querySelectorAll('.btn-add-slot').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.id;
+            const wrap = btn.closest('.slot-add-inline');
+            const wd = wrap.querySelector('.slot-add-wd').value;
+            const p = wrap.querySelector('.slot-add-p').value;
+            addSlotToCourse(id, wd, p);
+            renderScheduleView();
+        });
+    });
+    listEl.querySelectorAll('[data-rm-slot]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeSlotFromCourse(btn.dataset.id, btn.dataset.wd, btn.dataset.p);
+            renderScheduleView();
         });
     });
 }
@@ -152,6 +205,38 @@ export function initSchedule() {
     });
 
     document.getElementById('schedule-export').addEventListener('click', () => exportToPDF('view-schedule'));
+
+    document.getElementById('schedule-ai-balance').addEventListener('click', async () => {
+        if (!getToken()) {
+            toast('請先登入才能使用 AI 平衡顧問', 'warn');
+            return;
+        }
+        const sched = getSchedule();
+        const items = Object.values(sched).map(c => ({ semester: c.semester, serial_no: c.serial_no }));
+        const slot = document.getElementById('schedule-ai-balance-result');
+        const btn = document.getElementById('schedule-ai-balance');
+        if (items.length === 0) {
+            slot.innerHTML = '<div class="ai-summary-box" style="margin:10px 0">課表是空的,先加幾門課再來</div>';
+            return;
+        }
+        btn.disabled = true;
+        slot.innerHTML = '<div class="ai-summary-box" style="margin:10px 0"><span style="color:#888">AI 評估中…</span></div>';
+        try {
+            const resp = await fetchScheduleBalance(items);
+            if (resp && resp.advice) {
+                slot.innerHTML = `<div class="ai-summary-box" style="margin:10px 0">
+                    <div class="ai-summary-label"><i class="fas fa-robot"></i> AI 平衡顧問</div>
+                    <div class="ai-summary-text">${escapeHtml(resp.advice)}</div>
+                </div>`;
+            } else {
+                slot.innerHTML = '<div class="ai-summary-box" style="margin:10px 0;color:#999">AI 服務暫時不可用</div>';
+            }
+        } catch (err) {
+            slot.innerHTML = '<div class="ai-summary-box" style="margin:10px 0;color:#c33">查詢失敗</div>';
+        } finally {
+            btn.disabled = false;
+        }
+    });
 
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-schedule-toggle]');

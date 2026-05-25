@@ -78,3 +78,12 @@ export const deleteWishlist = (id) => apiSend('DELETE', `/me/wishlist/${id}`, un
 export const fetchRecommendations = (limit = 5) => apiGet(`/me/recommendations?limit=${limit}`, { auth: true, allowAny: true });
 export const fetchFit = (id) => apiGet(`/me/fit/${courseUrlPath(id)}`, { auth: true, allowAny: true });
 export const fetchBatchFits = (items) => apiSend('POST', '/me/fits', { items }, { auth: true });
+
+// AI features
+export const fetchCourseSummary = (id) => apiGet(`/me/courses/${courseUrlPath(id)}/summary`, { auth: true, allowAny: true });
+export const fetchSubstitutes = (id, limit = 5) => apiGet(`/me/courses/${courseUrlPath(id)}/substitutes?limit=${limit}`, { auth: true, allowAny: true });
+export const summarizeHistory = (historyId) => apiSend('POST', `/me/history/${historyId}/summarize`, undefined, { auth: true });
+export const fetchScheduleBalance = (items) => apiSend('POST', '/me/schedule/balance', { items }, { auth: true });
+export const fetchSuggestedInterests = () => apiGet('/me/suggested-interests', { auth: true, allowAny: true });
+export const fetchTeacherStyle = (name) => apiGet(`/teachers/${encodeURIComponent(name)}/style`, { allowAny: true });
+export const fetchPrerequisites = (id) => apiGet(`/courses/${courseUrlPath(id)}/prerequisites`, { allowAny: true });

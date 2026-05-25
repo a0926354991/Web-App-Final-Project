@@ -19,11 +19,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import os
 import re
 import sqlite3
 import time
 from typing import Any
+
+from . import llm
 
 WEIGHT_REC = 0.25
 WEIGHT_SWEET = 0.20
@@ -246,6 +251,94 @@ _ABILITY_LABEL_ZH = {
     "teamwork": "團隊協作",
 }
 
+# LLM explanation 快取:相同 (course_key, profile_sig, fit_sig) 不重算
+# 命中 → 0 延遲 + 0 token,典型情境是同一使用者重新整理首頁
+_LLM_EXPLANATION_CACHE: dict[str, str] = {}
+_LLM_EXPLANATION_CACHE_MAX = 2000
+
+_LLM_SYSTEM_PROMPT = (
+    "你是台大選課助教。根據使用者的能力、偏好,以及一門課的 PTT 評價統計與適合度分數,"
+    "用 1-2 句、總長 60 字以內的中文白話,告訴使用者『為什麼這門課適合 / 不適合他』。"
+    "規則:\n"
+    "- 不要列點、不要用「首先」「其次」、不要寒暄\n"
+    "- 提到具體理由(例如:命中興趣、能力契合、給分甜、loading 重等),但不要重複數字\n"
+    "- 如有明顯缺點(loading 重、給分不甜、能力差距大)務必點出\n"
+    "- 評價少於 2 篇就要說「樣本少,僅供參考」"
+)
+
+
+def _profile_signature(profile: dict[str, Any]) -> str:
+    """穩定的 profile 指紋,用於 cache key。"""
+    parts = [
+        profile.get("ability_logic"), profile.get("ability_writing"),
+        profile.get("ability_coding"), profile.get("ability_humanities"),
+        profile.get("ability_teamwork"),
+        profile.get("pref_sweetness"), profile.get("pref_loading"),
+        ",".join(sorted(profile.get("interests") or [])),
+    ]
+    return hashlib.md5(json.dumps(parts).encode()).hexdigest()[:12]
+
+
+def compute_explanation_llm(
+    profile: dict[str, Any],
+    fit: dict[str, Any],
+    matched_interests: list[str],
+    required_abilities: list[str],
+    course_meta: dict[str, str] | None,
+    course_key: tuple[str, str],
+) -> str | None:
+    """用 Gemini 生成個人化說明。失敗或 LLM 沒設定就回 None,呼叫端應 fallback。"""
+    if not llm.is_available():
+        return None
+
+    fit_sig = f"{fit['total']:.0f}_{fit['recommendation']:.0f}_{fit['sweetness']:.0f}_{fit['loading']:.0f}_{fit['interest']:.0f}_{fit['ability']:.0f}_{fit['n_reviews']}"
+    cache_key = f"{course_key[0]}__{course_key[1]}__{_profile_signature(profile)}__{fit_sig}"
+    if cache_key in _LLM_EXPLANATION_CACHE:
+        return _LLM_EXPLANATION_CACHE[cache_key]
+
+    name = (course_meta or {}).get("course_name", "")
+    dept = (course_meta or {}).get("department", "")
+    teacher = (course_meta or {}).get("teacher", "")
+
+    user_abilities_zh = ", ".join(
+        f"{_ABILITY_LABEL_ZH[a]}{profile.get(f'ability_{a}', 50)}"
+        for a in ["logic", "writing", "coding", "humanities", "teamwork"]
+    )
+    required_zh = "、".join(_ABILITY_LABEL_ZH.get(a, a) for a in required_abilities[:3]) or "無特別要求"
+    interests_zh = "、".join(profile.get("interests") or []) or "未指定"
+    matched_zh = "、".join(matched_interests) or "無"
+
+    prompt = (
+        f"課程:{name}({dept}{f' / {teacher} 老師' if teacher else ''})\n"
+        f"使用者能力(0-100):{user_abilities_zh}\n"
+        f"使用者興趣:{interests_zh}\n"
+        f"使用者偏好:甜度{profile.get('pref_sweetness', 50)}/100、loading {profile.get('pref_loading', 50)}/100\n"
+        f"---\n"
+        f"適合度總分 {fit['total']:.0f}/100,組成:\n"
+        f"- PTT 推薦 {fit['recommendation']:.0f}({fit['n_reviews']} 篇評價)\n"
+        f"- 給分甜度契合 {fit['sweetness']:.0f}\n"
+        f"- Loading 契合 {fit['loading']:.0f}\n"
+        f"- 興趣命中 {fit['interest']:.0f}(命中:{matched_zh})\n"
+        f"- 能力契合 {fit['ability']:.0f}(課程需要:{required_zh})\n"
+    )
+
+    # llm.generate_text 內部關掉 thinking,200 token 足夠 60 字中文輸出
+    text = llm.generate_text(
+        prompt,
+        system=_LLM_SYSTEM_PROMPT,
+        max_output_tokens=200,
+        temperature=0.35,
+    )
+    if not text:
+        return None
+
+    # 簡單 cache 驅逐
+    if len(_LLM_EXPLANATION_CACHE) >= _LLM_EXPLANATION_CACHE_MAX:
+        for k in list(_LLM_EXPLANATION_CACHE.keys())[:200]:
+            _LLM_EXPLANATION_CACHE.pop(k, None)
+    _LLM_EXPLANATION_CACHE[cache_key] = text
+    return text
+
 
 def compute_explanation(
     profile: dict[str, Any],
@@ -358,9 +451,15 @@ def compute_fit(
     profile: dict[str, Any],
     stats: dict[str, Any] | None,
     course_key: tuple[str, str],
+    *,
+    use_llm: bool = False,
+    course_meta: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """course_key = (semester, serial_no)。
-    回傳 {total, recommendation, sweetness, loading, interest, ability, n_reviews}。"""
+    回傳 {total, recommendation, sweetness, loading, interest, ability, n_reviews}。
+
+    use_llm=True 時嘗試呼叫 Gemini 生成 explanation;失敗 fallback 模板。
+    course_meta = {"course_name", "department", "teacher"} 供 LLM 用。"""
     # 評價來源 (1-5 → 0-100)
     if stats and stats.get("avg_rec") is not None:
         rec_score = stats["avg_rec"] * 20
@@ -401,7 +500,15 @@ def compute_fit(
     }
     fit["matched_interests"] = matched_interests
     fit["required_abilities"] = required_abilities
-    fit["explanation"] = compute_explanation(profile, fit, matched_interests, required_abilities)
+
+    explanation: str | None = None
+    if use_llm and os.environ.get("USE_LLM_EXPLANATION", "1") != "0":
+        explanation = compute_explanation_llm(
+            profile, fit, matched_interests, required_abilities, course_meta, course_key
+        )
+    if not explanation:
+        explanation = compute_explanation(profile, fit, matched_interests, required_abilities)
+    fit["explanation"] = explanation
     return fit
 
 

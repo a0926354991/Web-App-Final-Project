@@ -14,6 +14,16 @@ import sqlite3
 
 import sqlite3 as _sqlite3
 
+# 載入專案根目錄的 .env (GEMINI_API_KEY 等)。必須在其他 os.environ 讀取前。
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path as _Path
+    _env_path = _Path(__file__).resolve().parents[2] / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    pass
+
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -35,6 +45,7 @@ from .recommendations import (
     init_indices,
     profile_row_to_dict,
 )
+from . import ai_features
 from .schedule import parse_schedule
 from .schemas import (
     AuthResponse,
@@ -632,29 +643,48 @@ def my_recommendations(
         list(stats_map.keys()),
     ).fetchall()
 
-    scored: list[tuple[float, RecommendationItem]] = []
+    # 第一輪:對所有候選課程算 fit (不呼叫 LLM,純計算 → 快)
+    scored: list[tuple[float, dict, dict]] = []  # (total, row, fit)
     for r in reps:
         code = r["course_code"]
         if code in taken_codes:
             continue
         course_key = (r["semester"], r["serial_no"])
-        fit = compute_fit(profile, stats_map.get(code), course_key)
-        scored.append((
-            fit["total"],
-            RecommendationItem(
-                semester=r["semester"],
-                serial_no=r["serial_no"],
-                course_code=code,
-                course_name=r["course_name"],
-                teacher=r["teacher"] or "",
-                department=r["department"] or "",
-                credits=r["credits"] or "",
-                fit=FitBreakdown(**fit),
-            ),
-        ))
+        fit = compute_fit(profile, stats_map.get(code), course_key, use_llm=False)
+        scored.append((fit["total"], dict(r), fit))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [item for _, item in scored[:limit]]
+
+    # 第二輪:只對 top-N 重新生成 LLM explanation,平行呼叫
+    from concurrent.futures import ThreadPoolExecutor
+
+    top = scored[:limit]
+
+    def _enrich(r: dict, fit: dict) -> RecommendationItem:
+        course_key = (r["semester"], r["serial_no"])
+        llm_fit = compute_fit(
+            profile, stats_map.get(r["course_code"]), course_key,
+            use_llm=True,
+            course_meta={
+                "course_name": r["course_name"] or "",
+                "department": r["department"] or "",
+                "teacher": r["teacher"] or "",
+            },
+        )
+        return RecommendationItem(
+            semester=r["semester"],
+            serial_no=r["serial_no"],
+            course_code=r["course_code"],
+            course_name=r["course_name"],
+            teacher=r["teacher"] or "",
+            department=r["department"] or "",
+            credits=r["credits"] or "",
+            fit=FitBreakdown(**llm_fit),
+        )
+
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(top)))) as ex:
+        out = list(ex.map(lambda t: _enrich(t[1], t[2]), top))
+    return out
 
 
 @app.get("/me/fit/{semester}/{serial_no}", response_model=FitBreakdown)
@@ -665,7 +695,7 @@ def my_fit(
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> FitBreakdown:
     course = conn.execute(
-        "SELECT course_code FROM courses WHERE semester = ? AND serial_no = ?",
+        "SELECT course_code, course_name, department, teacher FROM courses WHERE semester = ? AND serial_no = ?",
         (semester, serial_no),
     ).fetchone()
     if course is None:
@@ -686,7 +716,15 @@ def my_fit(
     ).fetchone()
     stats_dict = dict(stats) if stats and stats["n_reviews"] > 0 else None
 
-    fit = compute_fit(profile, stats_dict, (semester, serial_no))
+    fit = compute_fit(
+        profile, stats_dict, (semester, serial_no),
+        use_llm=True,
+        course_meta={
+            "course_name": course["course_name"] or "",
+            "department": course["department"] or "",
+            "teacher": course["teacher"] or "",
+        },
+    )
     return FitBreakdown(**fit)
 
 
@@ -890,3 +928,211 @@ def delete_wishlist(
     conn.commit()
     if cur.rowcount == 0:
         raise HTTPException(404, "wishlist item not found")
+
+
+# =========================================================================
+# AI features (LLM-powered)
+# =========================================================================
+
+
+@app.get("/me/courses/{semester}/{serial_no}/summary")
+def my_course_summary(
+    semester: str,
+    serial_no: str,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, str | None]:
+    """#3 個人化課程摘要"""
+    course = conn.execute(
+        "SELECT semester, serial_no, course_code, course_name, department, teacher, "
+        "overview, objectives, grading FROM courses WHERE semester = ? AND serial_no = ?",
+        (semester, serial_no),
+    ).fetchone()
+    if course is None:
+        raise HTTPException(404, "course not found")
+
+    stats_row = conn.execute(
+        """
+        SELECT
+            AVG(CAST(NULLIF(recommendation, '') AS REAL)) AS avg_rec,
+            AVG(CAST(NULLIF(sweetness, '')      AS REAL)) AS avg_sweet,
+            AVG(CAST(NULLIF(workload, '')       AS REAL)) AS avg_workload,
+            COUNT(*) AS n_reviews
+        FROM reviews_structured WHERE course_id = ?
+        """,
+        (course["course_code"],),
+    ).fetchone()
+    stats = dict(stats_row) if stats_row and stats_row["n_reviews"] > 0 else None
+
+    profile = _load_profile_dict(conn, current["id"])
+    text = ai_features.personalized_course_summary(profile, dict(course), stats)
+    return {"summary": text}
+
+
+@app.post("/me/history/{history_id}/summarize")
+def my_history_summarize(
+    history_id: int,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, str | None]:
+    """#5 修課心得整理"""
+    row = conn.execute(
+        """
+        SELECT h.grade, h.notes, c.course_name, c.department, c.objectives
+        FROM user_history h
+        JOIN courses c ON c.semester = h.semester AND c.serial_no = h.serial_no
+        WHERE h.id = ? AND h.user_id = ?
+        """,
+        (history_id, current["id"]),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "history item not found")
+
+    text = ai_features.summarize_history_note(
+        course_name=row["course_name"] or "",
+        department=row["department"] or "",
+        objectives=row["objectives"] or "",
+        grade=row["grade"] or "",
+        notes=row["notes"] or "",
+    )
+    return {"summary": text}
+
+
+@app.get("/me/courses/{semester}/{serial_no}/substitutes")
+def my_substitutes(
+    semester: str,
+    serial_no: str,
+    limit: int = Query(5, ge=1, le=10),
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict:
+    """#4 衝堂替代課推薦 - 候選來自 find_related_courses,LLM 解釋為何"""
+    course = conn.execute(
+        "SELECT semester, serial_no, course_code, course_name, department FROM courses "
+        "WHERE semester = ? AND serial_no = ?",
+        (semester, serial_no),
+    ).fetchone()
+    if course is None:
+        raise HTTPException(404, "course not found")
+
+    candidates = find_related_courses((semester, serial_no), conn, limit=limit)
+    explanation = ai_features.explain_substitutes(dict(course), candidates)
+    return {"candidates": candidates, "explanation": explanation}
+
+
+@app.post("/me/schedule/balance")
+def my_schedule_balance(
+    body: dict,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, str | None]:
+    """#8 學期 workload 平衡顧問。body: {items: [{semester, serial_no}, ...]}"""
+    items = body.get("items") or []
+    if not items:
+        return {"advice": None}
+
+    # 取每門課的 stats + ability axes
+    stats_map = aggregate_course_stats(conn)
+    courses_input: list[dict] = []
+    for it in items[:20]:
+        sem = it.get("semester")
+        sno = it.get("serial_no")
+        if not sem or not sno:
+            continue
+        row = conn.execute(
+            "SELECT semester, serial_no, course_code, course_name, credits FROM courses "
+            "WHERE semester = ? AND serial_no = ?",
+            (sem, sno),
+        ).fetchone()
+        if row is None:
+            continue
+        c: dict = dict(row)
+        s = stats_map.get(row["course_code"])
+        if s:
+            c["avg_rec"] = s.get("avg_rec")
+            c["avg_workload"] = s.get("avg_workload")
+        # ability axes (前 N 個有 weight 的)
+        from .recommendations import _CACHE as _rec_cache
+        prof = _rec_cache.get("ability_profile", {}).get((sem, sno), {})
+        c["ability_axes"] = [a for a, w in sorted(prof.items(), key=lambda kv: -kv[1]) if w > 0][:3]
+        courses_input.append(c)
+
+    profile = _load_profile_dict(conn, current["id"])
+    advice = ai_features.schedule_balance_advice(courses_input, profile)
+    return {"advice": advice}
+
+
+@app.get("/me/suggested-interests")
+def my_suggested_interests(
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict:
+    """#7 動態興趣標籤建議"""
+    rows = conn.execute(
+        """
+        SELECT c.course_code, c.course_name, c.department
+        FROM user_history h
+        JOIN courses c ON c.semester = h.semester AND c.serial_no = h.serial_no
+        WHERE h.user_id = ?
+        ORDER BY h.added_at DESC LIMIT 30
+        """,
+        (current["id"],),
+    ).fetchall()
+    history = [dict(r) for r in rows]
+    if not history:
+        return {"suggestions": None, "has_history": False}
+
+    text = ai_features.suggest_interests(history)
+    return {"suggestions": text, "has_history": True}
+
+
+@app.get("/teachers/{name}/style")
+def teacher_style(
+    name: str,
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, str | None]:
+    """#6 教師教學風格摘要 (公開,無需 auth)"""
+    name = name.strip()
+    if not name:
+        raise HTTPException(400, "teacher name 不可空白")
+
+    course_codes_rows = conn.execute(
+        "SELECT DISTINCT course_code FROM courses WHERE teacher = ?",
+        (name,),
+    ).fetchall()
+    if not course_codes_rows:
+        raise HTTPException(404, f"teacher '{name}' not found")
+    course_codes = [r["course_code"] for r in course_codes_rows]
+    placeholders = ",".join("?" * len(course_codes))
+
+    reviews = conn.execute(
+        f"""
+        SELECT teaching_style, grading_method, summary
+        FROM reviews_structured
+        WHERE course_id IN ({placeholders})
+            AND (teaching_style != '' OR grading_method != '' OR summary != '')
+        LIMIT 25
+        """,
+        course_codes,
+    ).fetchall()
+
+    text = ai_features.teacher_style_summary(name, [dict(r) for r in reviews], len(course_codes))
+    return {"style": text}
+
+
+@app.get("/courses/{semester}/{serial_no}/prerequisites")
+def course_prerequisites(
+    semester: str,
+    serial_no: str,
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, str | None]:
+    """#9 先修脈絡推論 (公開,無需 auth)"""
+    row = conn.execute(
+        "SELECT semester, serial_no, course_name, department, objectives, overview, grading "
+        "FROM courses WHERE semester = ? AND serial_no = ?",
+        (semester, serial_no),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "course not found")
+    text = ai_features.infer_prerequisites(dict(row))
+    return {"prerequisites": text}

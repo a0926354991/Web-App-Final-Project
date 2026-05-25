@@ -1,7 +1,7 @@
 // 課程比較 Modal — 2-3 門課並排,含衝堂偵測。
 import { MAX_COMPARE, WEEKDAY_LABELS } from './config.js';
 import { compareState } from './state.js';
-import { getToken, fetchCourse, fetchBatchFits } from './api.js';
+import { getToken, fetchCourse, fetchBatchFits, fetchSubstitutes } from './api.js';
 import { courseId, parseCourseId, escapeHtml, escapeAttr, drawerSkeletonHTML, toast } from './utils.js';
 
 const compareFab = document.getElementById('compare-fab');
@@ -51,6 +51,39 @@ async function openCompareModal() {
             fits = await fetchBatchFits(ids.map(id => parseCourseId(id))).catch(() => ({}));
         }
         compareBody.innerHTML = renderCompareTable(courses, fits);
+
+        // 「AI 找替代」按鈕
+        compareBody.querySelectorAll('[data-sub-id]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.subId;
+                const slot = document.getElementById('ai-substitutes-result');
+                compareBody.querySelectorAll('[data-sub-id]').forEach(b => { b.disabled = true; });
+                slot.innerHTML = '<div style="margin-top:10px;color:#666">AI 思考中…</div>';
+                try {
+                    const resp = await fetchSubstitutes(id, 5);
+                    if (!resp || (!resp.candidates && !resp.explanation)) {
+                        slot.innerHTML = '<div style="margin-top:10px;color:#999">沒有合適的替代課程</div>';
+                        return;
+                    }
+                    const candHtml = (resp.candidates || []).map(c => `
+                        <div style="padding:6px 0;border-bottom:1px solid #eee">
+                            <strong>${escapeHtml(c.course_name)}</strong>
+                            <span style="color:#888;font-size:0.85rem"> · ${escapeHtml(c.teacher || '')} · ${escapeHtml(c.department || '')}</span>
+                        </div>
+                    `).join('');
+                    slot.innerHTML = `
+                        <div class="ai-summary-box" style="margin-top:10px">
+                            <div class="ai-summary-label"><i class="fas fa-robot"></i> AI 替代建議</div>
+                            ${resp.explanation ? `<div class="ai-summary-text" style="white-space:pre-wrap;margin-bottom:8px">${escapeHtml(resp.explanation)}</div>` : ''}
+                            ${candHtml}
+                        </div>`;
+                } catch (err) {
+                    slot.innerHTML = '<div style="margin-top:10px;color:#c33">替代查詢失敗</div>';
+                } finally {
+                    compareBody.querySelectorAll('[data-sub-id]').forEach(b => { b.disabled = false; });
+                }
+            });
+        });
     } catch (err) {
         console.error(err);
         compareBody.innerHTML = '<p class="drawer-empty">載入失敗</p>';
@@ -77,15 +110,26 @@ function detectCompareConflict(courses) {
 
 function renderCompareTable(courses, fits) {
     const conflicts = detectCompareConflict(courses);
-    const conflictBanner = conflicts.length === 0 ? '' : `
-        <div class="schedule-conflict-banner" style="margin-bottom: 14px">
-            <i class="fas fa-exclamation-triangle"></i>
-            <div>
-                <strong>衝堂警告:</strong>
-                ${conflicts.map(c => `${escapeHtml(c.a)} ↔ ${escapeHtml(c.b)} (${c.slots.join(', ')})`).join('; ')}
+    let conflictBanner = '';
+    if (conflicts.length > 0) {
+        // 給每個衝堂的第二門課加個 AI 找替代按鈕
+        const subBtns = getToken() ? courses.map(c => `
+            <button class="ai-btn" data-sub-id="${escapeAttr(courseId(c))}" data-sub-name="${escapeAttr(c.course_name)}">
+                <i class="fas fa-robot"></i> AI 找「${escapeHtml(c.course_name)}」的替代
+            </button>
+        `).join('') : '';
+        conflictBanner = `
+            <div class="schedule-conflict-banner" style="margin-bottom: 14px">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div>
+                    <strong>衝堂警告:</strong>
+                    ${conflicts.map(c => `${escapeHtml(c.a)} ↔ ${escapeHtml(c.b)} (${c.slots.join(', ')})`).join('; ')}
+                    <div style="margin-top:8px">${subBtns}</div>
+                    <div id="ai-substitutes-result"></div>
+                </div>
             </div>
-        </div>
-    `;
+        `;
+    }
 
     const cols = courses.map(c => `
         <th class="course-header course-col">

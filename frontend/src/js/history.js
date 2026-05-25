@@ -1,6 +1,6 @@
 // 修課歷史 view + 「加入歷史」modal。
 import { historyState, authState, discoverState } from './state.js';
-import { getToken, fetchHistory, addHistory as apiAddHistory, deleteHistory } from './api.js';
+import { getToken, fetchHistory, addHistory as apiAddHistory, deleteHistory, summarizeHistory } from './api.js';
 import { courseId, parseCourseId, escapeHtml, skeletonRowsHTML, toast, exportToPDF } from './utils.js';
 import { openAuthModal } from './auth.js';
 import { searchCourses, isDiscoverViewVisible } from './discover.js';
@@ -59,20 +59,29 @@ function renderHistoryTable() {
         els.body.innerHTML = '<tr><td colspan="8" class="empty-row">尚未加入任何課程 — 到「課程探索」加幾門吧</td></tr>';
         return;
     }
-    els.body.innerHTML = items.map(h => `
-        <tr>
+    els.body.innerHTML = items.map(h => {
+        const hasNotes = h.notes && h.notes.trim().length >= 5;
+        const aiBtn = hasNotes
+            ? `<button class="btn-ai-summarize" data-id="${h.id}" title="AI 整理心得"><i class="fas fa-robot"></i></button>`
+            : '';
+        return `
+        <tr data-row-id="${h.id}">
             <td>${escapeHtml(h.semester)}</td>
             <td>${escapeHtml(h.course_code)}</td>
             <td>${escapeHtml(h.course_name)}</td>
             <td>${escapeHtml(h.teacher)}</td>
             <td>${escapeHtml(h.credits)}</td>
             <td>${escapeHtml(h.grade) || '—'}</td>
-            <td>${escapeHtml(h.notes) || ''}</td>
+            <td>
+                <div>${escapeHtml(h.notes) || ''}</div>
+                <div class="ai-summary-slot" id="ai-hist-${h.id}"></div>
+            </td>
             <td class="action-cell">
+                ${aiBtn}
                 <button class="btn-delete-row" data-id="${h.id}" title="刪除"><i class="fas fa-trash"></i></button>
             </td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }).join('');
 
     els.body.querySelectorAll('.btn-delete-row').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -85,6 +94,30 @@ function renderHistoryTable() {
             } catch (err) {
                 console.error(err);
                 toast('刪除失敗', 'error');
+            }
+        });
+    });
+
+    els.body.querySelectorAll('.btn-ai-summarize').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            const slot = document.getElementById(`ai-hist-${id}`);
+            btn.disabled = true;
+            slot.innerHTML = '<div class="ai-summary-box" style="margin:6px 0;padding:8px 10px;"><span style="color:#888;font-size:0.85rem">生成中…</span></div>';
+            try {
+                const resp = await summarizeHistory(id);
+                if (resp && resp.summary) {
+                    slot.innerHTML = `<div class="ai-summary-box" style="margin:6px 0;padding:8px 10px;">
+                        <div class="ai-summary-label" style="font-size:0.8rem;"><i class="fas fa-robot"></i> AI 整理</div>
+                        <div class="ai-summary-text" style="font-size:0.88rem;">${escapeHtml(resp.summary)}</div>
+                    </div>`;
+                } else {
+                    slot.innerHTML = '<span style="color:#999;font-size:0.85rem">AI 服務暫時不可用</span>';
+                }
+            } catch (err) {
+                slot.innerHTML = '<span style="color:#c33;font-size:0.85rem">整理失敗</span>';
+            } finally {
+                btn.disabled = false;
             }
         });
     });

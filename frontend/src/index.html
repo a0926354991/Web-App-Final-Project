@@ -232,6 +232,12 @@
                             </div>
                             <p class="profile-hint">可複選 - 推薦時會優先考慮這些領域</p>
                             <div class="interest-tags" id="interest-tags"></div>
+                            <div style="margin-top:12px">
+                                <button type="button" class="ai-btn" id="profile-ai-suggest">
+                                    <i class="fas fa-robot"></i> AI 根據修課歷史建議興趣
+                                </button>
+                                <div id="profile-ai-suggest-result"></div>
+                            </div>
                         </div>
 
                         <div class="profile-actions">
@@ -253,6 +259,9 @@
                     <div class="schedule-toolbar">
                         <span id="schedule-summary" class="results-meta">尚未加入任何課程</span>
                         <div>
+                            <button class="ai-btn" id="schedule-ai-balance">
+                                <i class="fas fa-robot"></i> AI 平衡顧問
+                            </button>
                             <button class="btn-ghost" id="schedule-export">
                                 <i class="fas fa-print"></i> 匯出 PDF
                             </button>
@@ -260,6 +269,7 @@
                         </div>
                     </div>
                     <div id="schedule-conflicts" class="schedule-conflict-banner" hidden></div>
+                    <div id="schedule-ai-balance-result"></div>
                     <div class="card schedule-card">
                         <div id="schedule-grid" class="schedule-grid"></div>
                     </div>

@@ -1,6 +1,6 @@
 // 課程 / 教師 / related 抽屜。
 import { drawerState, historyState } from './state.js';
-import { getToken, fetchCourse, fetchCourseReviews, fetchRelated, fetchTeacher, fetchFit } from './api.js';
+import { getToken, fetchCourse, fetchCourseReviews, fetchRelated, fetchTeacher, fetchFit, fetchCourseSummary, fetchTeacherStyle, fetchPrerequisites } from './api.js';
 import { courseId, escapeHtml, escapeAttr, drawerSkeletonHTML, lowSampleBadge } from './utils.js';
 import { openHistoryModal } from './history.js';
 import { scheduleToggleBtn } from './schedule.js';
@@ -31,8 +31,37 @@ export async function openDrawer(id) {
         ]);
         drawerTitle.textContent = detail.course_name;
         drawerBody.innerHTML = renderFitBox(fit)
+            + (getToken() ? renderAISummaryPlaceholder(id) : '')
+            + renderPrereqPlaceholder()
             + renderDrawerContent(detail, reviewsResp.items)
             + renderRelatedSection(related || []);
+
+        // 非同步載入 AI 先修脈絡 (公開,不需登入)
+        fetchPrerequisites(id).then(resp => {
+            const box = document.getElementById('ai-prereq-box');
+            if (!box) return;
+            if (resp && resp.prerequisites) {
+                box.innerHTML = `<div class="ai-summary-label"><i class="fas fa-robot"></i> AI 先修建議</div><div class="ai-summary-text">${escapeHtml(resp.prerequisites)}</div>`;
+            } else {
+                box.remove();
+            }
+        }).catch(() => { const b = document.getElementById('ai-prereq-box'); if (b) b.remove(); });
+
+        // 非同步載入 AI 摘要 (不擋主流程)
+        if (getToken()) {
+            fetchCourseSummary(id).then(resp => {
+                const box = document.getElementById('ai-summary-box');
+                if (!box) return;
+                if (resp && resp.summary) {
+                    box.innerHTML = `<div class="ai-summary-label"><i class="fas fa-robot"></i> AI 摘要</div><div class="ai-summary-text">${escapeHtml(resp.summary)}</div>`;
+                } else {
+                    box.remove();
+                }
+            }).catch(() => {
+                const box = document.getElementById('ai-summary-box');
+                if (box) box.remove();
+            });
+        }
         const addBtn = document.getElementById('drawer-add-history-btn');
         if (addBtn) {
             addBtn.addEventListener('click', () => openHistoryModal(courseId(detail), detail.course_name));
@@ -55,14 +84,35 @@ export async function openTeacherInDrawer(name) {
     try {
         const d = await fetchTeacher(name);
         drawerTitle.textContent = `教師:${d.teacher}`;
-        drawerBody.innerHTML = renderTeacherContent(d);
+        drawerBody.innerHTML = renderTeacherStylePlaceholder() + renderTeacherContent(d);
         drawerBody.querySelectorAll('.teacher-course-row').forEach(row => {
             row.addEventListener('click', () => openDrawer(row.dataset.id));
+        });
+
+        // 非同步載入教學風格
+        fetchTeacherStyle(name).then(resp => {
+            const box = document.getElementById('teacher-style-box');
+            if (!box) return;
+            if (resp && resp.style) {
+                box.innerHTML = `<div class="ai-summary-label"><i class="fas fa-robot"></i> AI 教學風格摘要</div><div class="ai-summary-text">${escapeHtml(resp.style)}</div>`;
+            } else {
+                box.remove();
+            }
+        }).catch(() => {
+            const box = document.getElementById('teacher-style-box');
+            if (box) box.remove();
         });
     } catch (err) {
         console.error(err);
         drawerBody.innerHTML = '<p class="drawer-empty">載入失敗</p>';
     }
+}
+
+function renderTeacherStylePlaceholder() {
+    return `<div class="ai-summary-box" id="teacher-style-box">
+        <div class="ai-summary-label"><i class="fas fa-robot"></i> AI 教學風格摘要</div>
+        <div class="ai-summary-text" style="color:#888;font-size:0.85rem">生成中…</div>
+    </div>`;
 }
 
 function renderTeacherContent(d) {
@@ -117,6 +167,20 @@ function renderRelatedSection(related) {
         `;
     }).join('');
     return `<div class="drawer-section"><h3>${label}</h3>${items}</div>`;
+}
+
+function renderAISummaryPlaceholder() {
+    return `<div class="ai-summary-box" id="ai-summary-box">
+        <div class="ai-summary-label"><i class="fas fa-robot"></i> AI 摘要</div>
+        <div class="ai-summary-text" style="color:#888;font-size:0.85rem">生成中…</div>
+    </div>`;
+}
+
+function renderPrereqPlaceholder() {
+    return `<div class="ai-summary-box" id="ai-prereq-box">
+        <div class="ai-summary-label"><i class="fas fa-robot"></i> AI 先修建議</div>
+        <div class="ai-summary-text" style="color:#888;font-size:0.85rem">分析中…</div>
+    </div>`;
 }
 
 function renderFitBox(fit) {
