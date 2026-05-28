@@ -44,6 +44,11 @@ def model_name() -> str:
     return (os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash").strip()
 
 
+def embed_model_name() -> str:
+    # text-embedding-004 在較新的 API 版本已不支援,改用 gemini-embedding-001
+    return (os.environ.get("GEMINI_EMBED_MODEL") or "gemini-embedding-001").strip()
+
+
 def generate_text(
     prompt: str,
     *,

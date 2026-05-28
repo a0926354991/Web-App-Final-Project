@@ -331,7 +331,7 @@ _EMBEDDING_CACHE: dict[str, list[float]] = {}
 
 
 def _embed_text(text: str) -> list[float] | None:
-    """單次 embedding。失敗回 None。Gemini text-embedding-004。"""
+    """單次 embedding。失敗回 None。模型見 llm.embed_model_name()。"""
     if not llm.is_available():
         return None
     if not text:
@@ -345,7 +345,7 @@ def _embed_text(text: str) -> list[float] | None:
         if client is None:
             return None
         resp = client.models.embed_content(
-            model="text-embedding-004",
+            model=llm.embed_model_name(),
             contents=text,
         )
         # resp.embeddings is a list of ContentEmbedding; take first
