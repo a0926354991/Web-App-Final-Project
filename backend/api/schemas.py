@@ -14,6 +14,7 @@ class CourseSummary(BaseModel):
     department: str
     credits: str
     schedule_time: str
+    location: str = ""
     language: str
     slots: list[list] = []  # parsed schedule: [[weekday_int, "period_str"], ...]
 
@@ -21,7 +22,6 @@ class CourseSummary(BaseModel):
 class CourseDetail(CourseSummary):
     course_identifier: str
     req_type: str
-    location: str
     signup_class: str
     enrollment_cap: str
     overview: str

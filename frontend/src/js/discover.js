@@ -1,5 +1,5 @@
 // 課程探索表格 + 搜尋 + 篩選 + 分頁 + 適合度欄位 annotate / 排序。
-import { PAGE_SIZE } from './config.js';
+import { PAGE_SIZE, API_BASE } from './config.js';
 import { discoverState, compareState, historyState } from './state.js';
 import { getToken, fetchDepartments, fetchCourses, fetchBatchFits } from './api.js';
 import { courseId, escapeHtml, escapeAttr, skeletonRowsHTML, renderFitBadge } from './utils.js';
@@ -35,7 +35,7 @@ export async function initDiscoverView() {
         });
     } catch (err) {
         console.error('載入系所清單失敗:', err);
-        els.resultsMeta.textContent = '無法連線到 API server (預期：http://localhost:8000)。請確認後端有啟動。';
+        els.resultsMeta.textContent = `無法連線到 API server (${API_BASE})。請確認後端有啟動。`;
     }
 
     els.filterSemesterTabs.querySelectorAll('.semester-tab').forEach(btn => {
@@ -93,7 +93,7 @@ export async function searchCourses({ keepParams = false } = {}) {
     params.set('limit', PAGE_SIZE);
     params.set('offset', discoverState.offset);
 
-    els.resultsBody.innerHTML = skeletonRowsHTML(9, 6);
+    els.resultsBody.innerHTML = skeletonRowsHTML(10, 6);
     els.pagination.hidden = true;
 
     try {
@@ -106,15 +106,15 @@ export async function searchCourses({ keepParams = false } = {}) {
         if (getToken()) annotateResultsWithFit(data.items);
     } catch (err) {
         console.error(err);
-        els.resultsBody.innerHTML = '<tr><td colspan="10" class="empty-row">搜尋失敗,請確認 API server 是否啟動</td></tr>';
+        els.resultsBody.innerHTML = '<tr><td colspan="11" class="empty-row">搜尋失敗,請確認 API server 是否啟動</td></tr>';
     }
 }
 
 function renderResults(items) {
     if (items.length === 0) {
         const hint = (els.searchInput.value || els.filterDept.value || els.filterCredits.value)
-            ? '<tr><td colspan="10" class="empty-row">沒有符合條件的課程 — 試試減少篩選或換個關鍵字</td></tr>'
-            : '<tr><td colspan="10" class="empty-row">沒有資料 — 確認後端有跑起來?</td></tr>';
+            ? '<tr><td colspan="11" class="empty-row">沒有符合條件的課程 — 試試減少篩選或換個關鍵字</td></tr>'
+            : '<tr><td colspan="11" class="empty-row">沒有資料 — 確認後端有跑起來?</td></tr>';
         els.resultsBody.innerHTML = hint;
         return;
     }
@@ -136,6 +136,7 @@ function renderResults(items) {
             <td>${escapeHtml(c.department)}</td>
             <td>${escapeHtml(c.credits)}</td>
             <td>${escapeHtml(c.schedule_time) || '—'}</td>
+            <td class="loc-col">${escapeHtml(c.location) || '—'}</td>
             <td class="action-cell">${btnHtml}</td>
         </tr>
         `;

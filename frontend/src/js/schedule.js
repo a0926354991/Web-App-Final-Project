@@ -22,6 +22,7 @@ function addToSchedule(course) {
         course_name: course.course_name,
         teacher: course.teacher,
         course_code: course.course_code,
+        location: course.location || '',
         slots: course.slots || [],
     };
     saveSchedule(s);
@@ -95,11 +96,15 @@ export function renderScheduleView() {
         for (let wd = 1; wd <= 7; wd++) {
             const list = cellMap[`${wd}-${p}`] || [];
             const conflict = list.length > 1 ? ' conflict' : '';
-            const inner = list.map(c => `
-                <div class="cell-course" data-id="${escapeAttr(c.id)}" title="${escapeAttr(c.teacher)}">
+            const inner = list.map(c => {
+                const titleParts = [c.teacher, c.location].filter(Boolean).join(' · ');
+                return `
+                <div class="cell-course" data-id="${escapeAttr(c.id)}" title="${escapeAttr(titleParts)}">
                     ${escapeHtml(c.course_name)}
+                    ${c.location ? `<span class="cell-course-loc">${escapeHtml(c.location)}</span>` : ''}
                 </div>
-            `).join('');
+            `;
+            }).join('');
             cells.push(`<div class="cell${conflict}">${inner}</div>`);
         }
     });
@@ -124,7 +129,7 @@ export function renderScheduleView() {
                 <div class="schedule-course-item" data-id="${escapeAttr(id)}">
                     <div style="flex:1">
                         <div><strong>${escapeHtml(c.course_name)}</strong> <span style="color:#888">${escapeHtml(c.course_code || '')} · ${escapeHtml(c.semester || '')}</span></div>
-                        <div class="meta">${escapeHtml(c.teacher || '')}</div>
+                        <div class="meta">${escapeHtml(c.teacher || '')}${c.location ? ` · <i class="fas fa-location-dot"></i> ${escapeHtml(c.location)}` : ''}</div>
                         <div class="slot-row">
                             ${slotChips}
                             <span class="slot-add-inline" data-id="${escapeAttr(id)}">

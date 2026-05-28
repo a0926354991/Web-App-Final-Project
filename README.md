@@ -2,7 +2,7 @@
 
 NTU Personalized Course Recommendation — Web 應用程式期末專案。
 
-從台大課程網爬全校 8,467 門課，從 PTT NTUcourse 板爬 4,265 篇修課心得，
+從台大課程網爬全校 18,000+ 門開課（114-1 / 114-2 兩學期），從 PTT NTUcourse 板爬 4,875 篇修課心得，
 用 Claude API 結構化評價；再依使用者偏好（5 軸能力、甜度 / loading 偏好、興趣領域），
 以**手刻 TF-IDF + 關鍵字 mapping** 計算「適合度」推薦課程，並附上 template 生成的推薦理由。
 
@@ -55,9 +55,11 @@ NTU Personalized Course Recommendation — Web 應用程式期末專案。
 │   │   ├── schedule.py            # 解析課程時段字串
 │   │   ├── db.py                  # SQLite 連線 dependency
 │   │   └── schemas.py             # Pydantic models
-│   ├── scripts/                   # ingest_csv.py 等一次性灌資料 / 維護腳本
+│   ├── scripts/                   # ingest_csv.py / merge_crawl_data.py 等灌資料 / 維護腳本
 │   ├── data/                      # CSV (gitignored: app.db)
-│   ├── Web-crawler.py             # 台大課程網 Playwright 爬蟲
+│   ├── course_list_crawler.py     # 快速搜尋列表爬蟲 v2（DOM-based,正確抓上課時間/地點）
+│   ├── detail_crawler_v2.py       # 課程詳情頁爬蟲 v2（補課程概述/目標/要求/評量長文）
+│   ├── Web-crawler.py             # 舊版詳情頁爬蟲（課程網改版後長文 Regex 失效,改用 v2）
 │   ├── ptt_review_crawler.py      # PTT NTUcourse 板爬蟲
 │   ├── regex_structure_reviews.py # Regex 結構化（免 API）
 │   ├── llm_structure_reviews.py   # Claude Batch API 結構化
@@ -99,14 +101,18 @@ python backend/scripts/ingest_csv.py
 
 產出 `backend/data/app.db`（~30 MB）。
 
-> 想自己重新爬資料？依序執行 `Web-crawler.py` → `ptt_review_crawler.py`
-> → `regex_structure_reviews.py` 或 `llm_structure_reviews.py`。
-> LLM 路徑需要 `ANTHROPIC_API_KEY` 環境變數。
-
-> 想補爬其他學期 (e.g. 114-1)？
-> 1. `python backend/Web-crawler.py --semester 114-1` → 產出 `ntu_detailed_data_114-1.csv`
-> 2. `python backend/scripts/ingest_csv.py --append-courses backend/data/ntu_detailed_data_114-1.csv`
->    → INSERT OR IGNORE 進現有 courses 表(serial_no 重複會跳過)
+> 想自己重新爬課程資料？課程網已改版 (v3.x),建議用 v2 爬蟲:
+> 1. `python backend/course_list_crawler.py --semester 114-2`
+>    → 產出 `ntu_list_data_114-2_v2.csv`（含正確的上課時間/地點,DOM-based）
+> 2. `python backend/detail_crawler_v2.py --input backend/data/ntu_list_data_114-2_v2.csv --semester 114-2`
+>    → 產出 `ntu_detail_114-2_v2.csv`（課程概述/目標/要求/評量長文）
+> 3. `python backend/scripts/merge_crawl_data.py all --semester 114-2`
+>    → 把時間/地點 + 長文 merge 進 `app.db` 並清理髒資料（每次自動備份 app.db）
+>
+> 評價資料: `ptt_review_crawler.py` → `regex_structure_reviews.py` 或
+> `llm_structure_reviews.py`（LLM 路徑需 `ANTHROPIC_API_KEY`）。
+>
+> 舊版 `Web-crawler.py` 的長文抽取在改版後失效,僅供參考。
 
 > 想升級 ability 推薦?跑 `python backend/llm_ability_tags.py` 把 5249 個 course_code
 > 跑 Claude Batch API 各標 5 軸能力(0-100),完成後 `python backend/scripts/ingest_ability_tags.py`
@@ -150,10 +156,13 @@ docker compose up --build
 
 | 表 | 列數 |
 |---|---|
-| `courses` | 8,467 門（PK = 流水號；同 `課號` 跨學期 / 教師會重複，共 5,249 個 unique 課號）|
-| `reviews_raw` | 4,265 篇 PTT 原文 |
-| `reviews_structured` | 4,265 筆結構化評價（涵蓋 719 個 unique 課號）|
-| `users` / `sessions` / `user_profiles` / `user_history` | 使用者相關，啟動時自動建表 |
+| `courses` | 18,733 門開課（114-1: 9,190、114-2: 9,543；PK = (學期, 流水號)；同 `課號` 跨學期 / 教師會重複）|
+| `reviews_raw` | 4,875 篇 PTT 原文 |
+| `reviews_structured` | 4,875 筆結構化評價（涵蓋 847 個 unique 課號）|
+| `users` / `sessions` / `user_profiles` / `user_history` / `user_wishlist` | 使用者相關，啟動時自動建表 |
+
+> 上課時間 / 地點覆蓋率經 v2 列表爬蟲補強後約 6 成（114-1 時間 64% / 地點 56%，
+> 114-2 時間 61% / 地點 54%）；其餘多為論文 / 專題 / 服務學習等無固定時段地點的課。
 
 ---
 

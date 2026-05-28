@@ -207,7 +207,7 @@ def list_courses(
     rows = conn.execute(
         f"""
         SELECT semester, serial_no, course_code, course_name, teacher,
-               department, credits, schedule_time, language
+               department, credits, schedule_time, location, language
         FROM courses
         {where_sql}
         ORDER BY semester DESC, course_code, serial_no
@@ -218,6 +218,7 @@ def list_courses(
 
     def _to_summary(r: sqlite3.Row) -> CourseSummary:
         d = dict(r)
+        d["location"] = d.get("location") or ""  # DB 可能為 NULL
         d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
         return CourseSummary(**d)
 
@@ -241,7 +242,7 @@ def get_course(
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"course {semester}/{serial_no} not found")
-    d = dict(row)
+    d = {k: (v if v is not None else "") for k, v in dict(row).items()}
     d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
     return CourseDetail(**d)
 

@@ -615,6 +615,14 @@
             white-space: nowrap;
         }
 
+        /* 地點欄:不換行,過長 ellipsis */
+        .results-table .loc-col {
+            white-space: nowrap;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* 系所長字串允許換行,但每個系所之間斷行就好 */
         .results-table tbody tr td:nth-child(6) {
             word-break: keep-all;
@@ -1220,6 +1228,14 @@
 
         .schedule-grid .cell-course:hover {
             background: #bbdefb;
+        }
+
+        .schedule-grid .cell-course-loc {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 400;
+            opacity: 0.75;
+            margin-top: 1px;
         }
 
         .schedule-grid .cell.conflict {
@@ -2196,6 +2212,11 @@
 
         /* 手機版 (< 600px) — 比較 modal 改成上下堆疊 */
         @media (max-width: 600px) {
+            /* 探索表格欄位太多,手機隱藏地點欄 (詳情抽屜仍可看) */
+            .results-table .loc-col {
+                display: none;
+            }
+
             .compare-table {
                 display: block;
             }
