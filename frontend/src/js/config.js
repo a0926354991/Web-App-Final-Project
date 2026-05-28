@@ -1,5 +1,22 @@
 // 所有常數集中地。沒有副作用,只能 import const。
-export const API_BASE = 'http://localhost:8000';
+// API_BASE 解析順序:
+//   1. window.NTU_API_BASE — 部署時在 index.html 用 <script>window.NTU_API_BASE='...'</script> 覆寫
+//   2. 非 localhost 開啟時 → 同主機的 :8000 (Docker / 雲端部署常見:前端後端同機不同 port)
+//   3. fallback 到本機開發預設
+function resolveApiBase() {
+    if (typeof window !== 'undefined' && window.NTU_API_BASE) {
+        return String(window.NTU_API_BASE).replace(/\/$/, '');
+    }
+    if (typeof window !== 'undefined' && window.location) {
+        const { protocol, hostname } = window.location;
+        if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+            return `${protocol}//${hostname}:8000`;
+        }
+    }
+    return 'http://localhost:8000';
+}
+
+export const API_BASE = resolveApiBase();
 export const PAGE_SIZE = 20;
 export const MAX_COMPARE = 3;
 

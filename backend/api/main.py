@@ -12,8 +12,6 @@ from __future__ import annotations
 import os
 import sqlite3
 
-import sqlite3 as _sqlite3
-
 # 載入專案根目錄的 .env (GEMINI_API_KEY 等)。必須在其他 os.environ 讀取前。
 try:
     from dotenv import load_dotenv
@@ -123,8 +121,8 @@ def _load_dept_codes() -> None:
 
 @app.on_event("startup")
 def _startup() -> None:
-    conn = _sqlite3.connect(DB_PATH)
-    conn.row_factory = _sqlite3.Row
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     try:
         init_auth_tables(conn)
         init_indices(conn)

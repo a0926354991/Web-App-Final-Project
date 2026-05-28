@@ -18,6 +18,11 @@ services:
       - ./backend/data:/app/backend/data
     environment:
       - PYTHONUNBUFFERED=1
+      # AI 功能用 — 值從專案根目錄的 .env 帶入 (compose 自動載入 .env)。
+      # 沒設 GEMINI_API_KEY 就自動 fallback 到模板,不會壞。
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - USE_LLM_EXPLANATION=${USE_LLM_EXPLANATION:-1}
 
   frontend:
     build:

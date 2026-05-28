@@ -47,22 +47,32 @@ NTU Personalized Course Recommendation — Web 應用程式期末專案。
 .
 ├── backend/
 │   ├── api/                       # FastAPI app
-│   │   ├── main.py                # 全部 endpoints
+│   │   ├── main.py                # 全部 endpoints（含 9 個 AI 功能 endpoint）
 │   │   ├── auth.py                # PBKDF2 hash + session token + table init
-│   │   ├── recommendations.py     # TF-IDF + ability matching + 推薦理由
+│   │   ├── recommendations.py     # TF-IDF + ability matching + 推薦理由 + 相關課程
+│   │   ├── ai_features.py         # 9 個 Gemini AI 功能（摘要 / 替代課 / 平衡顧問 / …）
+│   │   ├── llm.py                 # Gemini client 封裝（無 key 自動 fallback）
+│   │   ├── schedule.py            # 解析課程時段字串
 │   │   ├── db.py                  # SQLite 連線 dependency
 │   │   └── schemas.py             # Pydantic models
-│   ├── scripts/
-│   │   └── ingest_csv.py          # CSV → SQLite 一次性灌資料
+│   ├── scripts/                   # ingest_csv.py 等一次性灌資料 / 維護腳本
 │   ├── data/                      # CSV (gitignored: app.db)
 │   ├── Web-crawler.py             # 台大課程網 Playwright 爬蟲
 │   ├── ptt_review_crawler.py      # PTT NTUcourse 板爬蟲
 │   ├── regex_structure_reviews.py # Regex 結構化（免 API）
 │   ├── llm_structure_reviews.py   # Claude Batch API 結構化
+│   ├── llm_ability_tags.py        # Claude Batch API 標 5 軸能力
 │   └── rematch_reviews.py         # 補匹配（尾綴變體）
 ├── frontend/src/
-│   ├── index.html                 # SPA 結構（5 個 view + 3 個 modal + 抽屜）
-│   ├── script.js                  # 所有互動邏輯（auth / discovery / drawer / compare / etc.）
+│   ├── index.html                 # SPA 結構（7 個 view + modal + 抽屜）
+│   ├── js/                        # ES modules（無打包,index.html 直接 import）
+│   │   ├── main.js                # 入口,依序初始化各模組
+│   │   ├── config.js              # 常數 + API_BASE 解析
+│   │   ├── api.js                 # token 管理 + 所有 endpoint 呼叫
+│   │   ├── state.js / utils.js    # 共用狀態與工具
+│   │   ├── auth.js / profile.js / dashboard.js / discover.js
+│   │   ├── drawer.js / compare.js / history.js / wishlist.js
+│   │   └── schedule.js / fit.js / chrome.js
 │   └── styles.css                 # 樣式（含 dark mode + RWD）
 └── requirements.txt
 ```
@@ -124,7 +134,15 @@ docker compose up --build
 瀏覽器開 **http://localhost:5500**。
 
 > Docker 版會自動 mount `backend/data/`,所以 `app.db` 跟 CSV 跟本機共用。
-> 注意 backend container 不包含爬蟲依賴 (Playwright),只有 API 必要的 deps。
+> 注意 backend container 不包含爬蟲依賴 (Playwright),只有 API 必要的 deps
+> (含 `google-genai` / `python-dotenv`,所以 AI 功能在 Docker 內也能運作)。
+>
+> **AI 功能**:compose 會自動從專案根目錄的 `.env` 帶入 `GEMINI_API_KEY` /
+> `GEMINI_MODEL` / `USE_LLM_EXPLANATION`。沒設 key 就 fallback 到模板,不會壞。
+>
+> **跨主機 / 雲端部署**:前端 `API_BASE` 預設會自動推算
+> (localhost → `:8000`;非 localhost → 同主機 `:8000`)。要指向別台後端,
+> 在 `frontend/src/index.html` 設 `window.NTU_API_BASE = 'https://api.your.domain'`。
 
 ---
 
