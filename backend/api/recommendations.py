@@ -447,18 +447,60 @@ def invalidate_stats_cache() -> None:
     _CACHE.pop("stats_map_at", None)
 
 
+def invalidate_indices() -> None:
+    """失效課程文字索引 + ability profile + IDF。
+
+    興趣 TF-IDF 比對吃 course_name / department / objectives / overview / grading,
+    這些索引在 startup 建一次就快取 (init_indices 的 `ready` 守門)。補爬課程長文
+    (overview/objectives/grading) 後須呼叫此函式 (或重啟 server),否則推薦的興趣
+    分數仍用舊的 (多為空的) 課程文字。下次 init_indices 會重建。"""
+    for k in ("text_index", "ability_profile", "interest_tags", "idf", "tag_patterns", "ready"):
+        _CACHE.pop(k, None)
+
+
+# 語意加成:TF-IDF 與 embedding 語意分的混合權重 (各半)
+SEMANTIC_BLEND = 0.5
+
+
+def _maybe_semantic_boost(
+    profile: dict[str, Any], course_key: tuple[str, str], tfidf_score: float
+) -> float:
+    """用 embedding 語意相似度加成 TF-IDF 興趣分。失敗 / 無 key → 原樣回傳。
+
+    ai_features 在 module 末端 lazy import,避免 circular import
+    (ai_features 會 from .recommendations import ...)。"""
+    interests = profile.get("interests") or []
+    if not interests:
+        return tfidf_score
+    parts = _CACHE.get("text_index", {}).get(course_key)
+    if not parts:
+        return tfidf_score
+    course_text = f"{parts['name']} {parts['dept']} {parts['obj']} {parts['ov']}"
+    try:
+        from . import ai_features
+        sem = ai_features.semantic_interest_score(interests, course_text)
+    except Exception:
+        sem = None
+    if sem is None:
+        return tfidf_score
+    return round(SEMANTIC_BLEND * sem + (1 - SEMANTIC_BLEND) * tfidf_score, 1)
+
+
 def compute_fit(
     profile: dict[str, Any],
     stats: dict[str, Any] | None,
     course_key: tuple[str, str],
     *,
     use_llm: bool = False,
+    use_semantic: bool = False,
     course_meta: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """course_key = (semester, serial_no)。
     回傳 {total, recommendation, sweetness, loading, interest, ability, n_reviews}。
 
     use_llm=True 時嘗試呼叫 Gemini 生成 explanation;失敗 fallback 模板。
+    use_semantic=True 時對興趣分做 embedding 語意加成 (僅用於 top-N 重排,因為
+        每次要呼叫 Gemini embedding;失敗 / 無 key 自動只用 TF-IDF)。
     course_meta = {"course_name", "department", "teacher"} 供 LLM 用。"""
     # 評價來源 (1-5 → 0-100)
     if stats and stats.get("avg_rec") is not None:
@@ -480,6 +522,12 @@ def compute_fit(
 
     interest_score, matched_interests = compute_interest_score(profile, course_key)
     ability_score, required_abilities = compute_ability_score(profile, course_key)
+
+    # 語意加成 (只在 top-N 重排階段開):用 Gemini embedding 算「使用者興趣 ↔ 課程
+    # 文字」的語意相似度,跟手刻 TF-IDF 的興趣分混合 (各半),補強同義詞抓不到的缺點
+    # (例如興趣標『AI』但課名寫『機器學習』『深度學習』,純關鍵字會漏)。
+    # 失敗 / 無 GEMINI_API_KEY → semantic 回 None → 維持純 TF-IDF。
+    interest_score = _maybe_semantic_boost(profile, course_key, interest_score) if use_semantic else interest_score
 
     total = (
         WEIGHT_REC * rec_score

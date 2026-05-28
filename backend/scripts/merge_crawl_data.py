@@ -129,6 +129,9 @@ def merge_detail(conn: sqlite3.Connection, sem: str, overwrite: bool) -> None:
     conn.commit()
     mode = "覆蓋" if overwrite else "只填空"
     print(f"[detail] {sem} ({mode}): " + " / ".join(f"{db}+{n:,}" for db, n in counts.items()))
+    if any(counts[f] for f in ("overview", "objectives", "grading")):
+        print("[detail] ⚠ 補了課程長文 → 請重啟 API server,讓興趣 TF-IDF 索引重建 "
+              "(init_indices 啟動時建一次就快取;見 recommendations.invalidate_indices)")
 
 
 def clean(conn: sqlite3.Connection, sem: str) -> None:

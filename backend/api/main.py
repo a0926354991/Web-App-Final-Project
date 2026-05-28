@@ -664,6 +664,7 @@ def my_recommendations(
         llm_fit = compute_fit(
             profile, stats_map.get(r["course_code"]), course_key,
             use_llm=True,
+            use_semantic=True,  # top-N 重排才開 embedding 語意加成 (只 N 次,有快取)
             course_meta={
                 "course_name": r["course_name"] or "",
                 "department": r["department"] or "",

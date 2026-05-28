@@ -2669,3 +2669,237 @@ body.theme-dark .slot-chip {
 body.theme-dark .slot-add-inline select {
     background: #2a2e3a; color: #ddd; border-color: #444;
 }
+
+/* =========================================================================
+   儀表板「科技深色系」試水溫皮膚 — 作用域限定 body.tech-skin #view-dashboard
+   只在儀表板可見時由 chrome.js 掛上 body.dashboard-tech,完全隔離,不影響
+   其他 view、現有 light/dark 切換、RWD。
+   ========================================================================= */
+@keyframes dt-card-in {
+    from { opacity: 0; transform: translateY(18px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes dt-glow-pulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(124,131,253,0.25), 0 8px 30px rgba(80,60,180,0.25); }
+    50%      { box-shadow: 0 0 0 1px rgba(124,131,253,0.5), 0 8px 40px rgba(120,80,255,0.4); }
+}
+
+/* 整個儀表板 view 鋪深藍紫漸層底 */
+body.tech-skin #view-dashboard {
+    position: relative;
+    margin: -10px;
+    padding: 28px;
+    border-radius: 18px;
+    background:
+        radial-gradient(1200px 500px at 15% -10%, rgba(99,102,241,0.25), transparent 60%),
+        radial-gradient(900px 500px at 110% 10%, rgba(168,85,247,0.22), transparent 55%),
+        linear-gradient(160deg, #0f1226 0%, #161a36 45%, #0d1024 100%);
+    color: #e6e8ff;
+    overflow: hidden;
+}
+body.tech-skin #view-dashboard::before {
+    /* 細微網點增加質感 */
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.4;
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 22px 22px;
+}
+body.tech-skin #view-dashboard > * { position: relative; z-index: 1; }
+
+body.tech-skin #view-dashboard .dashboard-title { color: #fff; letter-spacing: 0.5px; }
+body.tech-skin #view-dashboard .dashboard-title .en,
+body.tech-skin #view-dashboard .dashboard-subtitle { color: #9aa0d6; }
+
+/* 玻璃擬態卡片 */
+body.tech-skin #view-dashboard .card {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 8px 32px rgba(10,12,40,0.45);
+    animation: dt-card-in 0.5s cubic-bezier(0.22,1,0.36,1) both;
+}
+body.tech-skin #view-dashboard .recommended-card { animation-delay: 0.1s; }
+body.tech-skin #view-dashboard .card-header { border-bottom-color: rgba(255,255,255,0.1); }
+body.tech-skin #view-dashboard .card-title { color: #fff; }
+body.tech-skin #view-dashboard .card-title .en { color: #8b91c9; }
+
+/* 推薦課程卡:玻璃 + 霓虹 hover + stagger 進場 */
+body.tech-skin #view-dashboard .course-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #dfe2ff;
+    animation: dt-card-in 0.45s cubic-bezier(0.22,1,0.36,1) both;
+}
+/* stagger:前幾張卡依序浮現 */
+body.tech-skin #view-dashboard .course-list .course-card:nth-child(1) { animation-delay: 0.15s; }
+body.tech-skin #view-dashboard .course-list .course-card:nth-child(2) { animation-delay: 0.25s; }
+body.tech-skin #view-dashboard .course-list .course-card:nth-child(3) { animation-delay: 0.35s; }
+body.tech-skin #view-dashboard .course-list .course-card:nth-child(4) { animation-delay: 0.45s; }
+body.tech-skin #view-dashboard .course-list .course-card:nth-child(5) { animation-delay: 0.55s; }
+body.tech-skin #view-dashboard .course-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(124,131,253,0.6);
+    box-shadow: 0 10px 30px rgba(99,102,241,0.35);
+}
+
+/* 適合度 tag:霓虹漸層 + 脈動光暈 */
+body.tech-skin #view-dashboard .fit-tag {
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    color: #fff;
+    border: none;
+    animation: dt-glow-pulse 2.6s ease-in-out infinite;
+}
+body.tech-skin #view-dashboard .course-card-subtags .tag {
+    background: rgba(124,131,253,0.16);
+    color: #b9beff;
+}
+body.tech-skin #view-dashboard .course-card-details {
+    border-top-color: rgba(255,255,255,0.12);
+}
+body.tech-skin #view-dashboard .course-card-details span { color: #aab0e0; }
+body.tech-skin #view-dashboard .fit-explanation { color: #c3c8f5; }
+
+/* 加入課表按鈕在深色底下的對比 */
+body.tech-skin #view-dashboard .btn-toggle-schedule {
+    background: rgba(255,255,255,0.1); color: #e6e8ff; border: 1px solid rgba(255,255,255,0.2);
+}
+body.tech-skin #view-dashboard .btn-toggle-schedule.in-schedule {
+    background: linear-gradient(135deg, #22c55e, #16a34a); border: none; color: #fff;
+}
+body.tech-skin #view-dashboard .empty-banner {
+    background: rgba(124,131,253,0.12); border: 1px solid rgba(124,131,253,0.3); color: #c3c8f5;
+}
+body.tech-skin #view-dashboard .empty-banner a { color: #a5b4fc; }
+
+/* 尊重使用者「減少動態」偏好 */
+@media (prefers-reduced-motion: reduce) {
+    body.tech-skin #view-dashboard .card,
+    body.tech-skin #view-dashboard .course-card { animation: none; }
+    body.tech-skin #view-dashboard .fit-tag { animation: none; }
+}
+
+/* =========================================================================
+   全站科技風增強層 — body.tech-skin (疊在 theme-dark 深色基礎之上)
+   theme-dark 已處理所有元素的深色配色;tech-skin 只加:漸層背景 + 玻璃 + 霓虹 accent。
+   ========================================================================= */
+body.tech-skin .main-content {
+    background:
+        radial-gradient(1200px 600px at 10% -5%, rgba(99,102,241,0.18), transparent 60%),
+        radial-gradient(1000px 600px at 110% 0%, rgba(168,85,247,0.16), transparent 55%),
+        linear-gradient(160deg, #0d1024 0%, #14182f 50%, #0c0f22 100%);
+}
+
+/* 玻璃卡片 (全站,排除儀表板已自訂的) */
+body.tech-skin .card,
+body.tech-skin .filter-bar,
+body.tech-skin .results-table-wrapper,
+body.tech-skin .schedule-toolbar {
+    background: rgba(255,255,255,0.05) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* 主要操作按鈕:霓虹漸層 */
+body.tech-skin .btn-primary,
+body.tech-skin .ai-btn {
+    background: linear-gradient(135deg, #6366f1, #a855f7) !important;
+    border: none !important;
+    color: #fff !important;
+    transition: filter 0.2s, transform 0.1s;
+}
+body.tech-skin .btn-primary:hover,
+body.tech-skin .ai-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+
+/* 適合度 badge 在表格內也發光 */
+body.tech-skin .fit-badge.fit-high { background: linear-gradient(135deg,#22c55e,#16a34a); color:#fff; }
+body.tech-skin .fit-badge.fit-mid  { background: linear-gradient(135deg,#f59e0b,#f97316); color:#fff; }
+body.tech-skin .fit-badge.fit-low  { background: rgba(255,255,255,0.12); color:#cbd0f5; }
+
+/* 表格 row hover 霓虹 */
+body.tech-skin .results-table tbody tr:hover td {
+    background: rgba(124,131,253,0.12) !important;
+}
+
+/* sidebar 也帶一點科技感漸層 */
+body.tech-skin .sidebar {
+    background: linear-gradient(180deg, #12152b 0%, #0d1022 100%);
+}
+body.tech-skin .sidebar-item.active {
+    background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.2));
+    border-left: 3px solid #818cf8;
+}
+
+/* =========================================================================
+   好玩功能:適合度排行榜前三名獎牌
+   ========================================================================= */
+.fit-list-item.fit-podium { position: relative; overflow: hidden; }
+.fit-list-item .fit-rank { font-size: 1.8rem; }
+.fit-list-item.fit-gold   { border-left: 4px solid #ffd700; }
+.fit-list-item.fit-silver { border-left: 4px solid #c0c0c0; }
+.fit-list-item.fit-bronze { border-left: 4px solid #cd7f32; }
+/* 金牌微光 */
+.fit-list-item.fit-gold::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(90deg, rgba(255,215,0,0.12), transparent 40%);
+}
+body.tech-skin .fit-list-item.fit-gold {
+    box-shadow: 0 0 24px rgba(255,215,0,0.25); border-color: rgba(255,215,0,0.5);
+}
+body.tech-skin .fit-list-item.fit-silver { box-shadow: 0 0 16px rgba(192,192,192,0.18); }
+body.tech-skin .fit-list-item.fit-bronze { box-shadow: 0 0 16px rgba(205,127,50,0.18); }
+
+/* =========================================================================
+   好玩功能:今天修什麼 抽課轉盤
+   ========================================================================= */
+.lucky-modal-content { text-align: center; min-width: 340px; }
+.lucky-reel { min-height: 150px; display: flex; align-items: center; justify-content: center; }
+.lucky-card {
+    width: 100%; padding: 20px; border-radius: 12px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.1));
+    border: 1px solid rgba(124,131,253,0.3);
+}
+.lucky-card .lucky-fit {
+    display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: 700;
+    background: linear-gradient(135deg, #6366f1, #a855f7); color: #fff; margin-bottom: 10px;
+}
+.lucky-card .lucky-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
+.lucky-card .lucky-meta { font-size: 0.85rem; color: #888; }
+.lucky-card .lucky-why { margin-top: 10px; font-size: 0.85rem; color: #6366f1; font-style: italic; }
+.lucky-card.lucky-final {
+    cursor: pointer; animation: lucky-pop 0.4s cubic-bezier(0.22,1.4,0.36,1);
+    box-shadow: 0 0 30px rgba(124,131,253,0.4);
+}
+.lucky-card.lucky-final:hover { filter: brightness(1.08); }
+@keyframes lucky-pop { 0% { transform: scale(0.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+body.theme-dark .lucky-card .lucky-name { color: #fff; }
+body.theme-dark .lucky-card .lucky-meta { color: #aab0e0; }
+body.theme-dark .lucky-card .lucky-why { color: #b9beff; }
+
+/* =========================================================================
+   好玩功能:課表美感健檢
+   ========================================================================= */
+.vibe-box {
+    display: flex; gap: 20px; align-items: center; margin: 14px 0; padding: 18px 22px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(168,85,247,0.08));
+    border: 1px solid rgba(124,131,253,0.25);
+    animation: lucky-pop 0.4s cubic-bezier(0.22,1.4,0.36,1);
+}
+.vibe-score-wrap { text-align: center; min-width: 90px; }
+.vibe-grade {
+    font-size: 2.6rem; font-weight: 800; line-height: 1;
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.vibe-grade-S .vibe-grade { background: linear-gradient(135deg,#ffd700,#ffaa00); -webkit-background-clip: text; background-clip: text; }
+.vibe-grade-D .vibe-grade { background: linear-gradient(135deg,#ef4444,#b91c1c); -webkit-background-clip: text; background-clip: text; }
+.vibe-score { font-size: 1.2rem; font-weight: 700; color: #6366f1; }
+.vibe-score span { font-size: 0.8rem; color: #999; }
+.vibe-detail { flex: 1; }
+.vibe-stats { font-size: 0.82rem; color: #888; margin-bottom: 8px; }
+.vibe-roasts { margin: 0; padding-left: 18px; }
+.vibe-roasts li { font-size: 0.9rem; margin: 3px 0; }
+.vibe-msg { padding: 10px; color: #888; }
+body.theme-dark .vibe-stats { color: #aab0e0; }
+body.theme-dark .vibe-roasts li { color: #dfe2ff; }

@@ -9,3 +9,4 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 pydantic>=2.5
 xlrd>=2.0  # 讀取 學系代碼表.xls
+pytest>=8.0  # 單元測試 (backend/tests/)

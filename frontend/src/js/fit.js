@@ -1,6 +1,6 @@
 // Dashboard 「為您推薦」 + 適合度分析 tab。
 import { getToken, fetchRecommendations, fetchProfile } from './api.js';
-import { courseId, escapeHtml, escapeAttr, lowSampleBadge } from './utils.js';
+import { courseId, escapeHtml, escapeAttr, lowSampleBadge, countUp } from './utils.js';
 import { openDrawer } from './drawer.js';
 import { inSchedule } from './schedule.js';
 
@@ -37,7 +37,7 @@ export async function loadDashboardRecommendations() {
             const has = inSchedule(id);
             return `
             <div class="course-card" data-id="${escapeAttr(id)}">
-                <div class="course-card-tag fit-tag">適合度 ${it.fit.total.toFixed(0)}%${lowSampleBadge(it.fit.n_reviews)}</div>
+                <div class="course-card-tag fit-tag">適合度 <span class="fit-count" data-target="${it.fit.total.toFixed(0)}">${it.fit.total.toFixed(0)}</span>%${lowSampleBadge(it.fit.n_reviews)}</div>
                 <div class="course-card-subtags">
                     <span class="tag">推薦 ${it.fit.recommendation.toFixed(0)}</span>
                     <span class="tag">甜 ${it.fit.sweetness.toFixed(0)}</span>
@@ -61,6 +61,12 @@ export async function loadDashboardRecommendations() {
                 if (e.target.closest('[data-schedule-toggle]')) return;
                 openDrawer(card.dataset.id);
             });
+        });
+        // 適合度數字 count-up 動畫 (跟卡片 stagger 進場節奏對齊)
+        listEl.querySelectorAll('.fit-count').forEach((el, i) => {
+            const target = Number(el.dataset.target);
+            el.textContent = '0';
+            setTimeout(() => countUp(el, target, { duration: 900 }), 150 + i * 100);
         });
     } catch (err) {
         console.warn('loadDashboardRecommendations failed', err);
@@ -106,9 +112,11 @@ export async function renderFitAnalysisView() {
             listEl.innerHTML = '<p style="color:#999">沒有可推薦的課程</p>';
             return;
         }
+        const medals = ['gold', 'silver', 'bronze'];
+        const medalIcon = ['🥇', '🥈', '🥉'];
         listEl.innerHTML = items.map((it, i) => `
-            <div class="fit-list-item" data-id="${escapeAttr(courseId(it))}">
-                <div class="fit-rank">#${i + 1}</div>
+            <div class="fit-list-item${i < 3 ? ' fit-podium fit-' + medals[i] : ''}" data-id="${escapeAttr(courseId(it))}">
+                <div class="fit-rank">${i < 3 ? medalIcon[i] : '#' + (i + 1)}</div>
                 <div class="fit-item-main">
                     <div class="fit-item-title">${escapeHtml(it.course_name)} <span style="color:#888;font-weight:normal;font-size:0.85rem">${escapeHtml(it.course_code)} · ${escapeHtml(it.semester)}</span></div>
                     <div class="fit-item-meta">${escapeHtml(it.teacher)} · ${escapeHtml(it.credits)} 學分 · PTT ${it.fit.n_reviews} 篇評價</div>

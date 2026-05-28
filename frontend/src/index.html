@@ -119,8 +119,11 @@
                         </div>
 
                         <div class="card recommended-card">
-                            <div class="card-header">
+                            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
                                 <h2 class="card-title">為您推薦 <span class="en">Recommended</span></h2>
+                                <button class="ai-btn" id="lucky-draw-btn" title="從推薦中隨機抽一門">
+                                    <i class="fas fa-dice"></i> 今天修什麼
+                                </button>
                             </div>
                             <div class="course-list" id="dashboard-recommend-list">
                                 <div class="course-card placeholder-mini">
@@ -260,6 +263,9 @@
                     <div class="schedule-toolbar">
                         <span id="schedule-summary" class="results-meta">尚未加入任何課程</span>
                         <div>
+                            <button class="ai-btn" id="schedule-vibe-btn">
+                                <i class="fas fa-wand-magic-sparkles"></i> 課表健檢
+                            </button>
                             <button class="ai-btn" id="schedule-ai-balance">
                                 <i class="fas fa-robot"></i> AI 平衡顧問
                             </button>
@@ -270,6 +276,7 @@
                         </div>
                     </div>
                     <div id="schedule-conflicts" class="schedule-conflict-banner" hidden></div>
+                    <div id="schedule-vibe-result"></div>
                     <div id="schedule-ai-balance-result"></div>
                     <div class="card schedule-card">
                         <div id="schedule-grid" class="schedule-grid"></div>
@@ -409,6 +416,16 @@
         <i class="fas fa-balance-scale"></i> 比較 (<span id="compare-count">0</span>)
         <button class="compare-fab-clear" id="compare-clear" title="清空"><i class="fas fa-times"></i></button>
     </button>
+
+    <!-- ===== 今天修什麼 抽課 Modal ===== -->
+    <div class="auth-modal-overlay" id="lucky-modal" hidden>
+        <div class="auth-modal lucky-modal-content" role="dialog" aria-modal="true">
+            <button class="auth-modal-close" id="lucky-close" aria-label="關閉"><i class="fas fa-times"></i></button>
+            <h2><i class="fas fa-dice"></i> 今天修什麼？</h2>
+            <div class="lucky-reel" id="lucky-reel"></div>
+            <button class="btn-primary" id="lucky-spin" style="margin-top:14px;width:100%">再抽一次</button>
+        </div>
+    </div>
 
     <!-- ===== 課程比較 Modal ===== -->
     <div class="compare-modal-overlay" id="compare-modal" hidden>

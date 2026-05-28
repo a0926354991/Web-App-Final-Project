@@ -95,6 +95,23 @@ export function exportToPDF(viewId) {
     delete document.body.dataset.printingView;
 }
 
+// ------- Count-up 數字動畫 (儀表板適合度用) -------
+// 把 el 的數字從 0 跳到 target,duration 毫秒。尊重 prefers-reduced-motion。
+export function countUp(el, target, { duration = 900, suffix = '' } = {}) {
+    if (!el) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { el.textContent = `${Math.round(target)}${suffix}`; return; }
+    const start = performance.now();
+    function frame(now) {
+        const t = Math.min(1, (now - start) / duration);
+        // ease-out cubic
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = `${Math.round(target * eased)}${suffix}`;
+        if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+}
+
 // ------- Focus search input (鍵盤快捷鍵用) -------
 export function focusSearchInput() {
     const discoverNav = document.querySelector('.sidebar-item[data-target="discover"]');

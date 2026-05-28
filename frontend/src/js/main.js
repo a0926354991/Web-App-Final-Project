@@ -13,6 +13,7 @@ import { initHistory } from './history.js';
 import { initWishlist } from './wishlist.js';
 import { initSchedule } from './schedule.js';
 import { initProfile } from './profile.js';
+import { initLucky } from './lucky.js';
 
 initRadarChart();
 initDrawer();
@@ -22,5 +23,6 @@ initHistory();
 initWishlist();
 initSchedule();
 initProfile();
+initLucky();
 initChrome();
 bootstrapAuth();

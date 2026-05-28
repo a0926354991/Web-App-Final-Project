@@ -14,11 +14,15 @@ import { closeAuthModal } from './auth.js';
 import { closeHistoryModal } from './history.js';
 import { closeCompareModal } from './compare.js';
 
-// ------- Dark mode -------
+// ------- 主題 -------
+// 'tech' = 全站科技深色 (theme-dark 深色基礎 + tech-skin 漸層/玻璃/霓虹增強),為預設。
+// 'light' = 原本的亮色。toggle 在 tech ↔ light 之間切。
 export function applyTheme(name) {
-    document.body.classList.toggle('theme-dark', name === 'dark');
+    const tech = name !== 'light';  // 預設 / 非 light 一律走科技風
+    document.body.classList.toggle('theme-dark', tech);
+    document.body.classList.toggle('tech-skin', tech);
     const icon = document.querySelector('#theme-toggle i');
-    if (icon) icon.className = name === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+    if (icon) icon.className = tech ? 'fas fa-sun' : 'fas fa-moon';
     updateChartThemeFromBody();
 }
 
@@ -100,10 +104,10 @@ function setupKeyboardShortcuts() {
 
 // ------- Entry -------
 export function initChrome() {
-    // theme
-    applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+    // theme — 預設科技風 (tech),使用者可切回 light
+    applyTheme(localStorage.getItem(THEME_KEY) || 'tech');
     document.getElementById('theme-toggle').addEventListener('click', () => {
-        const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+        const next = document.body.classList.contains('tech-skin') ? 'light' : 'tech';
         localStorage.setItem(THEME_KEY, next);
         applyTheme(next);
     });

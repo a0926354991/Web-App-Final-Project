@@ -4,6 +4,7 @@ import { profileState } from './state.js';
 import { getToken, fetchProfile, saveProfile, fetchSuggestedInterests } from './api.js';
 import { toast, escapeHtml } from './utils.js';
 import { updateRadarFromProfile } from './dashboard.js';
+import { loadDashboardRecommendations } from './fit.js';
 
 const els = {
     form: document.getElementById('profile-form'),
@@ -115,6 +116,8 @@ export function initProfile() {
         try {
             const saved = await saveProfile(body);
             updateRadarFromProfile(saved);
+            // 偏好改了 → 推薦/適合度的輸入全變了,重抓儀表板推薦,避免顯示舊分數
+            loadDashboardRecommendations();
             els.saved.hidden = false;
             setTimeout(() => { els.saved.hidden = true; }, 2500);
         } catch (err) {

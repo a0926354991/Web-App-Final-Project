@@ -201,6 +201,47 @@ function refreshScheduleButtons() {
     });
 }
 
+// 課表美感健檢 — 純前端分析 slots,給趣味分數 + 吐槽。
+function analyzeScheduleVibe() {
+    const sched = getSchedule();
+    const courses = Object.values(sched);
+    const allSlots = courses.flatMap(c => c.slots || []);
+    if (allSlots.length === 0) {
+        return { score: null, msg: '課表是空的,先加幾門課再來健檢 🫥' };
+    }
+
+    // 各項指標
+    const byDay = {};       // weekday → [periods]
+    let earlyBird = 0;      // 早八 (第 1 節) 次數
+    allSlots.forEach(([wd, p]) => {
+        (byDay[wd] = byDay[wd] || []).push(p);
+        if (String(p) === '1') earlyBird++;
+    });
+    const daysWithClass = Object.keys(byDay).length;
+    const maxPerDay = Math.max(...Object.values(byDay).map(ps => ps.length));
+    const totalSlots = allSlots.length;
+    const freeDays = 5 - Object.keys(byDay).filter(wd => Number(wd) <= 5).length; // 平日空堂天
+
+    // 評分 (100 起扣)
+    let score = 100;
+    const roasts = [];
+    if (earlyBird >= 3) { score -= 25; roasts.push(`你有 ${earlyBird} 個早八,鬧鐘要設好幾個 ⏰`); }
+    else if (earlyBird >= 1) { score -= 8; roasts.push(`${earlyBird} 個早八,還行 😪`); }
+    else { roasts.push('零早八,人生勝利組 🌞'); }
+
+    if (maxPerDay >= 6) { score -= 20; roasts.push(`單日最多塞了 ${maxPerDay} 節,當天會升天 💀`); }
+    else if (maxPerDay >= 4) { score -= 8; roasts.push(`某天 ${maxPerDay} 節連發,記得帶午餐`); }
+
+    if (freeDays >= 2) { roasts.push(`平日有 ${freeDays} 天空堂,排得很爽 🎉`); }
+    else if (freeDays === 0) { score -= 12; roasts.push('平日天天有課,沒有喘息日 😮‍💨'); }
+
+    if (daysWithClass >= 6) { score -= 10; roasts.push('連假日都有課?太拚了'); }
+
+    score = Math.max(0, Math.min(100, score));
+    const grade = score >= 85 ? 'S' : score >= 70 ? 'A' : score >= 55 ? 'B' : score >= 40 ? 'C' : 'D';
+    return { score, grade, totalSlots, earlyBird, maxPerDay, freeDays, roasts };
+}
+
 export function initSchedule() {
     document.getElementById('schedule-clear').addEventListener('click', () => {
         if (!confirm('確定清空課表?')) return;
@@ -210,6 +251,27 @@ export function initSchedule() {
     });
 
     document.getElementById('schedule-export').addEventListener('click', () => exportToPDF('view-schedule'));
+
+    document.getElementById('schedule-vibe-btn').addEventListener('click', () => {
+        const slot = document.getElementById('schedule-vibe-result');
+        const v = analyzeScheduleVibe();
+        if (v.score === null) {
+            slot.innerHTML = `<div class="vibe-box"><div class="vibe-msg">${v.msg}</div></div>`;
+            return;
+        }
+        const roastHtml = v.roasts.map(r => `<li>${escapeHtml(r)}</li>`).join('');
+        slot.innerHTML = `
+            <div class="vibe-box vibe-grade-${v.grade}">
+                <div class="vibe-score-wrap">
+                    <div class="vibe-grade">${v.grade}</div>
+                    <div class="vibe-score">${v.score}<span>/100</span></div>
+                </div>
+                <div class="vibe-detail">
+                    <div class="vibe-stats">共 ${v.totalSlots} 節 · 早八 ${v.earlyBird} · 單日最多 ${v.maxPerDay} 節 · 平日空 ${v.freeDays} 天</div>
+                    <ul class="vibe-roasts">${roastHtml}</ul>
+                </div>
+            </div>`;
+    });
 
     document.getElementById('schedule-ai-balance').addEventListener('click', async () => {
         if (!getToken()) {
