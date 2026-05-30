@@ -36,6 +36,41 @@ WEIGHT_LOAD = 0.20
 WEIGHT_INTEREST = 0.20
 WEIGHT_ABILITY = 0.15
 
+# 預設權重 (與上面常數一致),compute_fit 在沒給 weights 時用這組
+DEFAULT_WEIGHTS: dict[str, float] = {
+    "recommendation": WEIGHT_REC,
+    "sweetness": WEIGHT_SWEET,
+    "loading": WEIGHT_LOAD,
+    "interest": WEIGHT_INTEREST,
+    "ability": WEIGHT_ABILITY,
+}
+
+# user_profiles 裡每個成份權重欄位名 (使用者可在前端用滑桿調)
+_WEIGHT_PROFILE_KEYS: dict[str, str] = {
+    "recommendation": "weight_recommendation",
+    "sweetness": "weight_sweetness",
+    "loading": "weight_loading",
+    "interest": "weight_interest",
+    "ability": "weight_ability",
+}
+
+
+def weights_from_profile(profile: dict[str, Any]) -> dict[str, float]:
+    """從 profile 的 weight_* 欄位 (0-100 整數) 取出 5 成份權重並 normalize 成總和=1。
+
+    任一欄位缺失或總和 <= 0 → 退回 DEFAULT_WEIGHTS。
+    讓使用者用滑桿自由設「我多看重 PTT 推薦 / 甜度 / loading / 興趣 / 能力」。"""
+    raw: dict[str, float] = {}
+    for comp, key in _WEIGHT_PROFILE_KEYS.items():
+        v = profile.get(key)
+        if v is None:
+            return dict(DEFAULT_WEIGHTS)
+        raw[comp] = float(v)
+    total = sum(raw.values())
+    if total <= 0:
+        return dict(DEFAULT_WEIGHTS)
+    return {k: v / total for k, v in raw.items()}
+
 # 興趣 tag 的固定清單 (前端 INTEREST_OPTIONS 的鏡像)
 INTEREST_TAGS_ALL = [
     "AI", "程式", "金融", "商管", "設計", "人文", "語言",
@@ -391,6 +426,8 @@ def compute_explanation(
     text = "、".join(highlights[:3])
     if caveats:
         text += ";但" + "、".join(caveats[:2])
+    if fit.get("is_estimated"):
+        text = "（此課無 PTT 評價,甜度/loading/推薦為同類課估計）" + text
     return text
 
 
@@ -445,17 +482,160 @@ def invalidate_stats_cache() -> None:
     """手動失效 aggregate_course_stats 快取（重新 ingest 評價後可呼叫）。"""
     _CACHE.pop("stats_map", None)
     _CACHE.pop("stats_map_at", None)
+    _CACHE.pop("proxy_stats", None)
+
+
+# =========================================================================
+# 冷啟動 (cold-start): 沒有 PTT 評價的課,用「同課號前綴 → 同系所」的評價平均當代理
+# =========================================================================
+
+
+def build_proxy_stats(conn: sqlite3.Connection) -> dict[str, Any]:
+    """為冷啟動建代理評價:把「有評價的課」依 課號英文前綴 / 開課系所 分組求均值。
+
+    回傳 {"by_prefix": {prefix: stats}, "by_dept": {dept: stats}, "code_dept": {code: dept}}。
+    每個 stats = {avg_rec, avg_sweet, avg_workload, n_codes}。
+    結果快取在 _CACHE,重新 ingest 後 invalidate_stats_cache() / invalidate_indices() 失效。"""
+    cached = _CACHE.get("proxy_stats")
+    if cached is not None:
+        return cached
+
+    stats_map = aggregate_course_stats(conn)
+    meta = courses_meta_cache(conn)
+
+    code_dept: dict[str, str] = {}
+    for m in meta.values():
+        c = m.get("course_code")
+        if c and c not in code_dept:
+            code_dept[c] = m.get("department") or ""
+
+    def _prefix(code: str) -> str:
+        m = re.match(r"^[A-Za-z]+", code or "")
+        return m.group() if m else ""
+
+    pre_acc: dict[str, dict] = {}
+    dept_acc: dict[str, dict] = {}
+    for code, s in stats_map.items():
+        if s.get("avg_rec") is None:
+            continue
+        for bucket, k in ((pre_acc, _prefix(code)), (dept_acc, code_dept.get(code, ""))):
+            if not k:
+                continue
+            b = bucket.setdefault(k, {"rec": [], "sw": [], "wl": [], "codes": 0})
+            b["codes"] += 1
+            if s.get("avg_rec") is not None:
+                b["rec"].append(s["avg_rec"])
+            if s.get("avg_sweet") is not None:
+                b["sw"].append(s["avg_sweet"])
+            if s.get("avg_workload") is not None:
+                b["wl"].append(s["avg_workload"])
+
+    def _finalize(acc: dict[str, dict]) -> dict[str, dict]:
+        out: dict[str, dict] = {}
+        for k, b in acc.items():
+            out[k] = {
+                "avg_rec": sum(b["rec"]) / len(b["rec"]) if b["rec"] else None,
+                "avg_sweet": sum(b["sw"]) / len(b["sw"]) if b["sw"] else None,
+                "avg_workload": sum(b["wl"]) / len(b["wl"]) if b["wl"] else None,
+                "n_codes": b["codes"],
+                "n_reviews": 0,  # 代理分數不是「這門課」的真實評價數
+            }
+        return out
+
+    proxy = {
+        "by_prefix": _finalize(pre_acc),
+        "by_dept": _finalize(dept_acc),
+        "code_dept": code_dept,
+    }
+    _CACHE["proxy_stats"] = proxy
+    return proxy
+
+
+# 代理分數至少要由幾個「有評價的課」聚合,才夠可信
+_PROXY_MIN_CODES = 3
+
+
+def resolve_stats(
+    course_code: str,
+    department: str,
+    stats_map: dict[str, Any],
+    proxy: dict[str, Any],
+) -> tuple[dict[str, Any] | None, bool]:
+    """解析一門課要用的評價 stats。回傳 (stats, is_estimated)。
+
+    階梯:
+      1. 有自己的 PTT 評價 → 用真實值 (is_estimated=False)
+      2. 同課號前綴 (e.g. CSIE) 的評價均值 (聚合 >= 3 個課號) → 估計值
+      3. 同系所的評價均值 (聚合 >= 3 個課號) → 估計值
+      4. 都沒有 → (None, False),compute_fit 會退回中性 50"""
+    s = stats_map.get(course_code)
+    if s and s.get("avg_rec") is not None:
+        return s, False
+
+    m = re.match(r"^[A-Za-z]+", course_code or "")
+    prefix = m.group() if m else ""
+    dept = department or proxy.get("code_dept", {}).get(course_code, "")
+
+    p = proxy["by_prefix"].get(prefix)
+    if p and p.get("avg_rec") is not None and p["n_codes"] >= _PROXY_MIN_CODES:
+        return p, True
+    d = proxy["by_dept"].get(dept)
+    if d and d.get("avg_rec") is not None and d["n_codes"] >= _PROXY_MIN_CODES:
+        return d, True
+    return None, False
 
 
 def invalidate_indices() -> None:
-    """失效課程文字索引 + ability profile + IDF。
+    """失效課程文字索引 + ability profile + IDF + 衍生快取。
 
     興趣 TF-IDF 比對吃 course_name / department / objectives / overview / grading,
     這些索引在 startup 建一次就快取 (init_indices 的 `ready` 守門)。補爬課程長文
     (overview/objectives/grading) 後須呼叫此函式 (或重啟 server),否則推薦的興趣
-    分數仍用舊的 (多為空的) 課程文字。下次 init_indices 會重建。"""
-    for k in ("text_index", "ability_profile", "interest_tags", "idf", "tag_patterns", "ready"):
+    分數仍用舊的 (多為空的) 課程文字。下次 init_indices 會重建。
+
+    同時失效 courses_meta_cache (相關課程用) 與 period1_set (早八過濾用),
+    兩者都假設課程資料在 runtime 不變;重新 ingest 課程後須一併失效。"""
+    for k in ("text_index", "ability_profile", "interest_tags", "idf", "tag_patterns",
+              "ready", "courses_meta", "period1_set"):
         _CACHE.pop(k, None)
+
+
+def courses_meta_cache(conn: sqlite3.Connection) -> dict[tuple[str, str], dict]:
+    """{(semester, serial_no): {course_code, course_name, teacher, department, credits}}。
+
+    課程資料在 runtime 視為不變,所以全表只讀一次後快取在 _CACHE。
+    取代「每次 related / substitutes 請求都 SELECT 全表 (~18k 列) + 重建 dict」。
+    重新 ingest 課程後呼叫 invalidate_indices() 失效。"""
+    cached = _CACHE.get("courses_meta")
+    if cached is not None:
+        return cached
+    rows = conn.execute(
+        "SELECT semester, serial_no, course_code, course_name, teacher, department, credits FROM courses"
+    ).fetchall()
+    meta = {(r["semester"], r["serial_no"]): dict(r) for r in rows}
+    _CACHE["courses_meta"] = meta
+    return meta
+
+
+def period1_course_keys(conn: sqlite3.Connection) -> set[tuple[str, str]]:
+    """回傳「課表含第 1 節 (早八)」的 (semester, serial_no) 集合,建一次後快取。
+
+    取代 list_courses 的 no_period1 過濾每次對所有候選列 re-parse schedule_time
+    (regex 重)。判定邏輯與原本 parse_schedule 完全一致 (含第 1 節即排除)。
+    重新 ingest 課程後呼叫 invalidate_indices() 失效。"""
+    cached = _CACHE.get("period1_set")
+    if cached is not None:
+        return cached
+    from .schedule import parse_schedule
+
+    rows = conn.execute("SELECT semester, serial_no, schedule_time FROM courses").fetchall()
+    keys = {
+        (r["semester"], r["serial_no"])
+        for r in rows
+        if any(str(p) == "1" for _, p in parse_schedule(r["schedule_time"]))
+    }
+    _CACHE["period1_set"] = keys
+    return keys
 
 
 # 語意加成:TF-IDF 與 embedding 語意分的混合權重 (各半)
@@ -494,14 +674,18 @@ def compute_fit(
     use_llm: bool = False,
     use_semantic: bool = False,
     course_meta: dict[str, str] | None = None,
+    weights: dict[str, float] | None = None,
+    estimated: bool = False,
 ) -> dict[str, Any]:
     """course_key = (semester, serial_no)。
-    回傳 {total, recommendation, sweetness, loading, interest, ability, n_reviews}。
+    回傳 {total, recommendation, sweetness, loading, interest, ability, n_reviews, is_estimated}。
 
     use_llm=True 時嘗試呼叫 Gemini 生成 explanation;失敗 fallback 模板。
     use_semantic=True 時對興趣分做 embedding 語意加成 (僅用於 top-N 重排,因為
         每次要呼叫 Gemini embedding;失敗 / 無 key 自動只用 TF-IDF)。
-    course_meta = {"course_name", "department", "teacher"} 供 LLM 用。"""
+    course_meta = {"course_name", "department", "teacher"} 供 LLM 用。
+    weights = 5 成份權重 (已 normalize),None → DEFAULT_WEIGHTS。
+    estimated = True 表示 stats 是冷啟動代理值 (非這門課真實評價),會標進 is_estimated。"""
     # 評價來源 (1-5 → 0-100)
     if stats and stats.get("avg_rec") is not None:
         rec_score = stats["avg_rec"] * 20
@@ -529,12 +713,13 @@ def compute_fit(
     # 失敗 / 無 GEMINI_API_KEY → semantic 回 None → 維持純 TF-IDF。
     interest_score = _maybe_semantic_boost(profile, course_key, interest_score) if use_semantic else interest_score
 
+    w = weights or DEFAULT_WEIGHTS
     total = (
-        WEIGHT_REC * rec_score
-        + WEIGHT_SWEET * sweet_score
-        + WEIGHT_LOAD * load_score
-        + WEIGHT_INTEREST * interest_score
-        + WEIGHT_ABILITY * ability_score
+        w["recommendation"] * rec_score
+        + w["sweetness"] * sweet_score
+        + w["loading"] * load_score
+        + w["interest"] * interest_score
+        + w["ability"] * ability_score
     )
 
     fit = {
@@ -545,6 +730,7 @@ def compute_fit(
         "interest": round(interest_score, 1),
         "ability": round(ability_score, 1),
         "n_reviews": (stats or {}).get("n_reviews", 0),
+        "is_estimated": estimated,
     }
     fit["matched_interests"] = matched_interests
     fit["required_abilities"] = required_abilities
@@ -616,10 +802,7 @@ def find_related_by_content(
     limit: int = 5,
 ) -> list[dict]:
     """target_key = (semester, serial_no)。"""
-    rows = conn.execute(
-        "SELECT semester, serial_no, course_code, course_name, teacher, department, credits FROM courses"
-    ).fetchall()
-    courses_meta = {(r["semester"], r["serial_no"]): dict(r) for r in rows}
+    courses_meta = courses_meta_cache(conn)
     if target_key not in courses_meta:
         return []
     target_code = courses_meta[target_key]["course_code"]
@@ -763,7 +946,10 @@ def profile_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:
             "ability_humanities": 50, "ability_teamwork": 50,
             "pref_sweetness": 50, "pref_loading": 50,
             "interests": [],
+            "weight_recommendation": 25, "weight_sweetness": 20, "weight_loading": 20,
+            "weight_interest": 20, "weight_ability": 15,
         }
+    keys = row.keys()
     return {
         "ability_logic": row["ability_logic"],
         "ability_writing": row["ability_writing"],
@@ -773,4 +959,9 @@ def profile_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:
         "pref_sweetness": row["pref_sweetness"],
         "pref_loading": row["pref_loading"],
         "interests": _json.loads(row["interests"]),
+        "weight_recommendation": row["weight_recommendation"] if "weight_recommendation" in keys else 25,
+        "weight_sweetness": row["weight_sweetness"] if "weight_sweetness" in keys else 20,
+        "weight_loading": row["weight_loading"] if "weight_loading" in keys else 20,
+        "weight_interest": row["weight_interest"] if "weight_interest" in keys else 20,
+        "weight_ability": row["weight_ability"] if "weight_ability" in keys else 15,
     }

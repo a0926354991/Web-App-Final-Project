@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import asynccontextmanager
 
 # 載入專案根目錄的 .env (GEMINI_API_KEY 等)。必須在其他 os.environ 讀取前。
 try:
@@ -44,16 +45,9 @@ class UTF8JSONResponse(JSONResponse):
     media_type = "application/json; charset=utf-8"
 
 
-app = FastAPI(
-    title="NTU Course Recommendation API",
-    description="台大個性化選課推薦系統 — 課程與 PTT 評價查詢",
-    version="0.1.0",
-    default_response_class=UTF8JSONResponse,
-)
-
-
-@app.on_event("startup")
-def _startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup: 建表 + 建索引 + 載入系所代碼表
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -62,6 +56,17 @@ def _startup() -> None:
     finally:
         conn.close()
     load_dept_codes()
+    yield
+    # shutdown: 目前無需清理 (DB 連線都是 per-request)
+
+
+app = FastAPI(
+    title="NTU Course Recommendation API",
+    description="台大個性化選課推薦系統 — 課程與 PTT 評價查詢",
+    version="0.1.0",
+    default_response_class=UTF8JSONResponse,
+    lifespan=lifespan,
+)
 
 
 # CORS: 從 env var ALLOWED_ORIGINS 讀 (comma-separated)。

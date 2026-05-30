@@ -104,6 +104,7 @@ class FitBreakdown(BaseModel):
     interest: float
     ability: float
     n_reviews: int
+    is_estimated: bool = False  # True = 甜度/loading/推薦是冷啟動代理值,非本課真實評價
     matched_interests: list[str] = []
     required_abilities: list[str] = []
     explanation: str = ""
@@ -221,4 +222,10 @@ class UserProfile(BaseModel):
     pref_sweetness: int = Field(50, ge=0, le=100)
     pref_loading: int = Field(50, ge=0, le=100)
     interests: list[str] = Field(default_factory=list)
+    # 適合度成份權重 (0-100 importance,後端 normalize)。預設對應原本固定權重 25/20/20/20/15
+    weight_recommendation: int = Field(25, ge=0, le=100)
+    weight_sweetness: int = Field(20, ge=0, le=100)
+    weight_loading: int = Field(20, ge=0, le=100)
+    weight_interest: int = Field(20, ge=0, le=100)
+    weight_ability: int = Field(15, ge=0, le=100)
     updated_at: str | None = None

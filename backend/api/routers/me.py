@@ -21,7 +21,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..auth import get_current_user
 from ..db import get_conn
 from ..deps import load_profile_dict, row_to_profile
-from ..recommendations import aggregate_course_stats, compute_fit
+from ..recommendations import (
+    aggregate_course_stats,
+    build_proxy_stats,
+    compute_fit,
+    resolve_stats,
+    weights_from_profile,
+)
 from ..schedule import parse_schedule
 from ..schemas import (
     FitBreakdown,
@@ -69,8 +75,10 @@ def update_my_profile(
         INSERT INTO user_profiles (
             user_id, ability_logic, ability_writing, ability_coding,
             ability_humanities, ability_teamwork,
-            pref_sweetness, pref_loading, interests, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            pref_sweetness, pref_loading, interests,
+            weight_recommendation, weight_sweetness, weight_loading,
+            weight_interest, weight_ability, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET
             ability_logic = excluded.ability_logic,
             ability_writing = excluded.ability_writing,
@@ -80,6 +88,11 @@ def update_my_profile(
             pref_sweetness = excluded.pref_sweetness,
             pref_loading = excluded.pref_loading,
             interests = excluded.interests,
+            weight_recommendation = excluded.weight_recommendation,
+            weight_sweetness = excluded.weight_sweetness,
+            weight_loading = excluded.weight_loading,
+            weight_interest = excluded.weight_interest,
+            weight_ability = excluded.weight_ability,
             updated_at = CURRENT_TIMESTAMP
         """,
         (
@@ -87,6 +100,8 @@ def update_my_profile(
             body.ability_logic, body.ability_writing, body.ability_coding,
             body.ability_humanities, body.ability_teamwork,
             body.pref_sweetness, body.pref_loading, interests_json,
+            body.weight_recommendation, body.weight_sweetness, body.weight_loading,
+            body.weight_interest, body.weight_ability,
         ),
     )
     conn.commit()
@@ -109,6 +124,7 @@ def my_recommendations(
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> list[RecommendationItem]:
     profile = load_profile_dict(conn, current["id"])
+    weights = weights_from_profile(profile)
     stats_map = aggregate_course_stats(conn)
     if not stats_map:
         return []
@@ -151,7 +167,7 @@ def my_recommendations(
         if code in taken_codes:
             continue
         course_key = (r["semester"], r["serial_no"])
-        fit = compute_fit(profile, stats_map.get(code), course_key, use_llm=False)
+        fit = compute_fit(profile, stats_map.get(code), course_key, use_llm=False, weights=weights)
         scored.append((fit["total"], dict(r), fit))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -165,6 +181,7 @@ def my_recommendations(
             profile, stats_map.get(r["course_code"]), course_key,
             use_llm=True,
             use_semantic=True,  # top-N 重排才開 embedding 語意加成 (只 N 次,有快取)
+            weights=weights,
             course_meta={
                 "course_name": r["course_name"] or "",
                 "department": r["department"] or "",
@@ -202,6 +219,7 @@ def my_fit(
         raise HTTPException(404, f"course {semester}/{serial_no} not found")
 
     profile = load_profile_dict(conn, current["id"])
+    weights = weights_from_profile(profile)
     stats = conn.execute(
         """
         SELECT
@@ -214,11 +232,22 @@ def my_fit(
         """,
         (course["course_code"],),
     ).fetchone()
-    stats_dict = dict(stats) if stats and stats["n_reviews"] > 0 else None
+
+    if stats and stats["n_reviews"] > 0:
+        stats_dict, estimated = dict(stats), False
+    else:
+        # 冷啟動:這門課沒 PTT 評價 → 用同課號前綴 / 同系所的代理評價
+        proxy = build_proxy_stats(conn)
+        stats_dict, estimated = resolve_stats(
+            course["course_code"], course["department"] or "",
+            aggregate_course_stats(conn), proxy,
+        )
 
     fit = compute_fit(
         profile, stats_dict, (semester, serial_no),
         use_llm=True,
+        weights=weights,
+        estimated=estimated,
         course_meta={
             "course_name": course["course_name"] or "",
             "department": course["department"] or "",
@@ -236,6 +265,7 @@ def fill_recommend(
 ) -> list[RecommendationItem]:
     """找出與已排課表不衝堂、且適合度最高的推薦課程。"""
     profile = load_profile_dict(conn, current["id"])
+    weights = weights_from_profile(profile)
     stats_map = aggregate_course_stats(conn)
     if not stats_map:
         return []
@@ -279,7 +309,7 @@ def fill_recommend(
             slot_set = {(wd, p) for wd, p in slots}
             if slot_set & occupied:  # conflict → skip
                 continue
-        fit = compute_fit(profile, stats_map.get(code), (r["semester"], r["serial_no"]), use_llm=False)
+        fit = compute_fit(profile, stats_map.get(code), (r["semester"], r["serial_no"]), use_llm=False, weights=weights)
         scored.append((fit["total"], dict(r), fit))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -315,17 +345,24 @@ def my_fits_batch(
     for it in items:
         args.extend([it.semester, it.serial_no])
     rows = conn.execute(
-        f"SELECT semester, serial_no, course_code FROM courses WHERE {conds}",
+        f"SELECT semester, serial_no, course_code, department FROM courses WHERE {conds}",
         args,
     ).fetchall()
 
     profile = load_profile_dict(conn, current["id"])
+    weights = weights_from_profile(profile)
     stats_map = aggregate_course_stats(conn)
+    proxy = build_proxy_stats(conn)
 
     out: dict[str, FitBreakdown] = {}
     for r in rows:
         key = f"{r['semester']}__{r['serial_no']}"
-        fit = compute_fit(profile, stats_map.get(r["course_code"]), (r["semester"], r["serial_no"]))
+        # 冷啟動:沒評價的課用同課號前綴 / 同系所代理 (探索頁表格也能看到估計適合度)
+        stats, estimated = resolve_stats(r["course_code"], r["department"] or "", stats_map, proxy)
+        fit = compute_fit(
+            profile, stats, (r["semester"], r["serial_no"]),
+            weights=weights, estimated=estimated,
+        )
         out[key] = FitBreakdown(**fit)
     return out
 

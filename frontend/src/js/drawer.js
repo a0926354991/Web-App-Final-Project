@@ -1,7 +1,7 @@
 // 課程 / 教師 / related 抽屜。
 import { drawerState, historyState } from './state.js';
 import { getToken, fetchCourse, fetchCourseReviews, fetchRelated, fetchTeacher, fetchFit, fetchCourseSummary, fetchTeacherStyle, fetchPrerequisites } from './api.js';
-import { courseId, escapeHtml, escapeAttr, drawerSkeletonHTML, lowSampleBadge } from './utils.js';
+import { courseId, escapeHtml, escapeAttr, drawerSkeletonHTML, estimatedBadge } from './utils.js';
 import { openHistoryModal } from './history.js';
 import { scheduleToggleBtn } from './schedule.js';
 import { wishlistToggleBtn } from './wishlist.js';
@@ -187,7 +187,7 @@ function renderFitBox(fit) {
     if (!fit) return '';
     return `
         <div class="drawer-fit-box">
-            <div class="drawer-fit-total">適合度 ${fit.total.toFixed(0)}% ${lowSampleBadge(fit.n_reviews)}</div>
+            <div class="drawer-fit-total">適合度 ${fit.total.toFixed(0)}% ${estimatedBadge(fit)}</div>
             ${fit.explanation ? `<div class="drawer-fit-why">${escapeHtml(fit.explanation)}</div>` : ''}
             <div class="drawer-fit-breakdown">
                 <span><strong>PTT 推薦</strong>${fit.recommendation.toFixed(0)}</span>

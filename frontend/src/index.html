@@ -256,6 +256,12 @@
                             </div>
                             <p class="profile-hint">可複選 - 推薦時會優先考慮這些領域</p>
                             <div class="interest-tags" id="interest-tags"></div>
+                        </div>
+                        <div class="form-section">
+                            <h3 class="form-section-title"><i class="fas fa-balance-scale"></i> 推薦權重
+                                <span style="font-size:0.75rem;color:#888;font-weight:normal">（拉高你更看重的成份，系統自動歸一化並即時重算推薦）</span>
+                            </h3>
+                            <div class="slider-group" id="weight-group"></div>
                             <div style="margin-top:12px">
                                 <button type="button" class="ai-btn" id="profile-ai-suggest">
                                     <i class="fas fa-robot"></i> AI 根據修課歷史建議興趣
@@ -525,8 +531,9 @@
     </aside>
     <div class="drawer-overlay" id="drawer-overlay"></div>
 
-    <!-- 部署到非 localhost 時,取消下行註解並改成你的後端位址(覆寫 config.js 的自動推算) -->
-    <script>window.NTU_API_BASE = 'https://web-app-final-project-railway-deploy-production.up.railway.app';</script>
+    <!-- 部署到非 localhost 時,取消下行註解並改成你的後端位址(覆寫 config.js 的自動推算)。
+         本機開發請保持註解,config.js 會自動推算成 http://localhost:8000 -->
+    <!-- <script>window.NTU_API_BASE = 'https://web-app-final-project-railway-deploy-production.up.railway.app';</script> -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module" src="js/main.js"></script>
 

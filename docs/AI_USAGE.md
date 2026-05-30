@@ -3,7 +3,7 @@
 > 台大個性化選課推薦系統 — AI 功能盤點（給報告 / 簡報用）
 
 本系統的 AI 應用分三層：**即時生成式功能**（使用者直接互動）、**語意理解**（embedding 參與推薦排序）、**離線資料處理管線**（把非結構化資料變成結構化分數）。
-用到兩家 LLM：**Google Gemini**（即時，`gemini-2.5-flash` + `text-embedding-004`）與 **Anthropic Claude**（離線 Batch API）。
+用到兩家 LLM：**Google Gemini**（即時，`gemini-2.5-flash` + `gemini-embedding-001`）與 **Anthropic Claude**（離線 Batch API）。
 
 ---
 
@@ -40,7 +40,7 @@
 **這是讓 AI 進入「決策」而非只是「解釋」的關鍵。**
 
 - 原本興趣比對 100% 靠手刻 TF-IDF（純關鍵字），缺點是**抓不到同義詞**：使用者興趣標「AI」，但課名寫「機器學習」「深度學習」就漏掉。
-- 解法：用 `text-embedding-004` 算「使用者興趣 ↔ 課程描述」的**語意相似度**（cosine），跟 TF-IDF 分數**各半混合**。
+- 解法：用 `gemini-embedding-001` 算「使用者興趣 ↔ 課程描述」的**語意相似度**（cosine），跟 TF-IDF 分數**各半混合**。
 - 實作：[`recommendations.py`](../backend/api/recommendations.py) 的 `_maybe_semantic_boost` + `semantic_interest_score`。
 - **效能設計**：embedding 慢且要呼叫 API，所以**只在 top-N 重排階段**對少數候選課做（不是對全校 18,000+ 門課），且有 embedding 快取；無 key / 失敗自動 fallback 純 TF-IDF。
 
@@ -84,5 +84,5 @@
 | 用途 | 模型 / 服務 | 即時性 |
 |---|---|---|
 | 8 個生成式功能 + 推薦理由 | Google Gemini `gemini-2.5-flash` | 即時 |
-| 興趣語意相似度 | Google Gemini `text-embedding-004` | 即時（top-N） |
+| 興趣語意相似度 | Google Gemini `gemini-embedding-001` | 即時（top-N） |
 | PTT 評價結構化 / 課程能力標註 | Anthropic Claude（Batch API） | 離線 |

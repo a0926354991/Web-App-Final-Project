@@ -135,10 +135,26 @@ def smoke(headed: bool = False) -> None:
         print(f"   got {n_recs} recommendations")
         screenshot(page, "06-fit-analysis")
 
-        # 6. Dark mode toggle — sanity check the theme class flips
-        print("→ dark mode toggle")
+        # 6. Theme toggle — assert the theme class actually FLIPS, whatever the
+        #    default is. (App now defaults to the 'tech' dark theme, so clicking
+        #    once goes dark→light; don't hard-assert one specific end state.)
+        print("→ theme toggle")
+        before = page.locator("body").evaluate("b => b.classList.contains('theme-dark')")
         page.click("#theme-toggle")
-        expect(page.locator("body.theme-dark")).to_be_visible()
+        page.wait_for_function(
+            "prev => document.body.classList.contains('theme-dark') !== prev",
+            arg=before,
+            timeout=3000,
+        )
+        after = page.locator("body").evaluate("b => b.classList.contains('theme-dark')")
+        assert after != before, f"theme did not flip (before={before}, after={after})"
+        # screenshot whichever state shows the toggle worked; flip back to dark for a
+        # consistent dark-mode shot if we landed on light
+        if not after:
+            page.click("#theme-toggle")
+            page.wait_for_function(
+                "() => document.body.classList.contains('theme-dark')", timeout=3000
+            )
         screenshot(page, "07-dark-mode")
 
         # 7. Confirm no uncaught JS errors hit the page

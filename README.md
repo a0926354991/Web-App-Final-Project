@@ -47,10 +47,16 @@ NTU Personalized Course Recommendation — Web 應用程式期末專案。
 .
 ├── backend/
 │   ├── api/                       # FastAPI app
-│   │   ├── main.py                # 全部 endpoints（含 9 個 AI 功能 endpoint）
+│   │   ├── main.py                # 建 app + CORS + lifespan(startup 建表/索引) + include router
+│   │   ├── routers/              # route handlers 按領域拆分
+│   │   │   ├── courses.py        # 課程 / 評價 / 教師 / 系所（公開）
+│   │   │   ├── auth.py          # 註冊 / 登入 / refresh / logout / me
+│   │   │   ├── me.py            # profile / 推薦 / 適合度 / 修課歷史 / 想修清單（需 auth）
+│   │   │   └── ai.py            # 7 個 LLM-powered AI 功能 endpoint
+│   │   ├── deps.py               # 跨 router 共用 helper（系所代碼 / row→schema）
 │   │   ├── auth.py                # PBKDF2 hash + session token + table init
 │   │   ├── recommendations.py     # TF-IDF + ability matching + 推薦理由 + 相關課程
-│   │   ├── ai_features.py         # 9 個 Gemini AI 功能（摘要 / 替代課 / 平衡顧問 / …）
+│   │   ├── ai_features.py         # Gemini AI 功能實作（摘要 / 替代課 / 平衡顧問 / …）
 │   │   ├── llm.py                 # Gemini client 封裝（無 key 自動 fallback）
 │   │   ├── schedule.py            # 解析課程時段字串
 │   │   ├── db.py                  # SQLite 連線 dependency
@@ -165,33 +171,60 @@ docker compose up --build
 
 ---
 
-## API 一覽（共 19 個 endpoints）
+## API 一覽（共 31 個 endpoints）
+
+> 課程相關路徑的 key 是 `(學期, 流水號)`，所以單堂課路徑為 `/courses/{semester}/{serial_no}`。
+
+### 公開 / 課程查詢
 
 | Method | Path | 用途 | 需 auth |
 |---|---|---|---|
 | GET | `/health` | 健康檢查 | – |
-| GET | `/courses` | 列表 + 搜尋 + 篩選 + 分頁 | – |
-| GET | `/courses/{serial_no}` | 單堂課詳情 | – |
-| GET | `/courses/{serial_no}/reviews` | 該課的 PTT 結構化評價 | – |
+| GET | `/courses` | 列表 + 搜尋 + 篩選（甜度 / loading / 早八）+ 分頁 | – |
+| GET | `/courses/{semester}/{serial_no}` | 單堂課詳情 | – |
+| GET | `/courses/{semester}/{serial_no}/reviews` | 該課的 PTT 結構化評價 | – |
+| GET | `/courses/{semester}/{serial_no}/related` | 相關課程 (CF + content hybrid) | – |
 | GET | `/departments` | 系所列表（給前端下拉）| – |
 | GET | `/teachers/{name}` | 教師概覽 + 該教師所有課 + 統計 | – |
+
+### 認證
+
+| Method | Path | 用途 | 需 auth |
+|---|---|---|---|
 | POST | `/auth/register` | 註冊 | – |
 | POST | `/auth/login` | 登入（同 IP 60s 內 8 次 → 429）| – |
-| POST | `/auth/logout` | 登出（刪 session token）| ✓ |
 | POST | `/auth/refresh` | 延長現有 session 到再 30 天 | ✓ |
+| POST | `/auth/logout` | 登出（刪 session token）| ✓ |
 | GET | `/auth/me` | 取得目前使用者 | ✓ |
+
+### 使用者資料 / 推薦（全需 auth）
+
+| Method | Path | 用途 | 需 auth |
+|---|---|---|---|
 | GET | `/me/profile` | 取得偏好（不存在則回預設）| ✓ |
 | PUT | `/me/profile` | 寫入偏好（upsert）| ✓ |
+| GET | `/me/recommendations?limit=N` | Top N 推薦（排除已修）| ✓ |
+| GET | `/me/fit/{semester}/{serial_no}` | 單堂課適合度分數 + 各成份 + 推薦理由 | ✓ |
+| POST | `/me/fits` | 批次拿一組課的適合度（供表格顯示）| ✓ |
+| POST | `/me/schedule/fill-recommend` | 與現有課表不衝堂的高適合度推薦 | ✓ |
 | GET | `/me/history` | 修課歷史列表（含 join courses）| ✓ |
 | POST | `/me/history` | 新增一筆 | ✓ |
 | DELETE | `/me/history/{id}` | 刪除一筆 | ✓ |
 | GET | `/me/wishlist` | 想修清單 | ✓ |
 | POST | `/me/wishlist` | 加入想修 | ✓ |
 | DELETE | `/me/wishlist/{id}` | 移除想修 | ✓ |
-| GET | `/courses/{serial_no}/related` | 相關課程 (CF + content hybrid) | – |
-| GET | `/me/recommendations?limit=N` | Top N 推薦（排除已修）| ✓ |
-| GET | `/me/fit/{serial_no}` | 單堂課適合度分數 + 各成份 + 推薦理由 | ✓ |
-| POST | `/me/fits` | 批次拿一組課的適合度（供表格顯示）| ✓ |
+
+### AI 功能（Gemini，無 key 自動 fallback）
+
+| Method | Path | 用途 | 需 auth |
+|---|---|---|---|
+| GET | `/me/courses/{semester}/{serial_no}/summary` | 個人化課程摘要 | ✓ |
+| GET | `/me/courses/{semester}/{serial_no}/substitutes` | 衝堂替代課推薦 + 理由 | ✓ |
+| POST | `/me/history/{id}/summarize` | 修課心得整理 | ✓ |
+| POST | `/me/schedule/balance` | 學期 workload 平衡顧問 | ✓ |
+| GET | `/me/suggested-interests` | 動態興趣標籤建議 | ✓ |
+| GET | `/teachers/{name}/style` | 教師教學風格摘要 | – |
+| GET | `/courses/{semester}/{serial_no}/prerequisites` | 先修脈絡推論 | – |
 
 完整 request/response schema 在 **http://localhost:8000/docs**（FastAPI 自動產生）。
 

@@ -2,17 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安裝 backend 需要的 deps (api 部分,不含爬蟲依賴 Playwright)
-# 含 google-genai + python-dotenv,否則 AI 功能在 container 內會 ImportError → 全部 fallback
-COPY requirements.txt .
-RUN pip install --no-cache-dir \
-    "fastapi>=0.110" \
-    "uvicorn[standard]>=0.27" \
-    "pydantic>=2.5" \
-    "pandas>=2.0" \
-    "xlrd>=2.0" \
-    "google-genai>=0.3" \
-    "python-dotenv>=1.0"
+# 安裝 backend API 執行期 deps (不含爬蟲依賴 Playwright/requests/bs4/anthropic)。
+# 用 requirements-api.txt 作為單一來源,避免跟手動清單版本漂移。
+# 含 google-genai + python-dotenv,否則 AI 功能在 container 內會 ImportError → 全部 fallback。
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir -r requirements-api.txt
 
 # 複製 backend 程式碼
 COPY backend/ /app/backend/

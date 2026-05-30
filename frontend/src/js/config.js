@@ -40,6 +40,15 @@ export const PREF_FIELDS = [
     { key: 'pref_loading', label: 'loading 偏好', hint: '高 = 喜歡扎實' },
 ];
 
+// 適合度成份權重滑桿(拉高你更看重的成份,後端自動歸一化)
+export const WEIGHT_FIELDS = [
+    { key: 'weight_recommendation', label: 'PTT 推薦' },
+    { key: 'weight_sweetness', label: '甜度' },
+    { key: 'weight_loading', label: 'loading' },
+    { key: 'weight_interest', label: '興趣' },
+    { key: 'weight_ability', label: '能力' },
+];
+
 export const INTEREST_OPTIONS = [
     'AI', '程式', '金融', '商管', '設計', '人文', '語言',
     '自然科學', '社會科學', '醫學', '法律', '體育', '藝術',

@@ -86,6 +86,16 @@ export function lowSampleBadge(n) {
     return '';
 }
 
+// 冷啟動估計值徽章:fit.is_estimated 時顯示「≈ 估計值」(此課無 PTT 評價,
+// 甜度/loading/推薦由同課號前綴 / 同系所的課估計);否則退回樣本少 / 無評價警告。
+export function estimatedBadge(fit) {
+    if (fit && fit.is_estimated) {
+        return ' <span class="est-badge" title="此課無 PTT 評價,甜度/loading/推薦為同類課估計"'
+            + ' style="background:#eef0ff;color:#5560c0;font-size:0.72rem;padding:1px 7px;border-radius:8px;white-space:nowrap">≈ 估計值</span>';
+    }
+    return lowSampleBadge(fit ? fit.n_reviews : undefined);
+}
+
 // ------- PDF export (用瀏覽器列印) -------
 export function exportToPDF(viewId) {
     document.body.classList.add('printing');
