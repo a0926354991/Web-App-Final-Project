@@ -1,5 +1,5 @@
 // 使用者資訊輸入頁(能力 / 偏好 / 興趣)。
-import { ABILITY_FIELDS, PREF_FIELDS, INTEREST_OPTIONS } from './config.js';
+import { ABILITY_FIELDS, PREF_FIELDS, WEIGHT_FIELDS, INTEREST_OPTIONS } from './config.js';
 import { profileState } from './state.js';
 import { getToken, fetchProfile, saveProfile, fetchSuggestedInterests } from './api.js';
 import { toast, escapeHtml } from './utils.js';
@@ -11,10 +11,37 @@ const els = {
     needLogin: document.getElementById('profile-need-login'),
     abilityGroup: document.getElementById('ability-group'),
     prefGroup: document.getElementById('pref-group'),
+    weightGroup: document.getElementById('weight-group'),
     interestTags: document.getElementById('interest-tags'),
     save: document.getElementById('profile-save'),
     saved: document.getElementById('profile-saved'),
 };
+
+// 收集整份 profile（能力 + 偏好 + 權重 + 興趣）成 request body
+function collectProfileBody() {
+    const body = { interests: [...profileState.selectedInterests] };
+    [...ABILITY_FIELDS, ...PREF_FIELDS, ...WEIGHT_FIELDS].forEach(f => {
+        const el = document.getElementById(`slider-${f.key}`);
+        if (el) body[f.key] = Number(el.value);
+    });
+    return body;
+}
+
+// 權重滑桿拖動 → debounce 自動存檔 + 即時重算儀表板推薦（demo 重點：拉滑桿即時重排）
+let _weightSaveTimer = null;
+function scheduleWeightSave() {
+    if (!getToken()) return;
+    clearTimeout(_weightSaveTimer);
+    _weightSaveTimer = setTimeout(async () => {
+        try {
+            const saved = await saveProfile(collectProfileBody());
+            updateRadarFromProfile(saved);
+            loadDashboardRecommendations();
+        } catch (err) {
+            console.warn('weight auto-save failed', err);
+        }
+    }, 500);
+}
 
 function buildSliderRow(field, value, hint) {
     const row = document.createElement('div');
@@ -55,6 +82,15 @@ function renderProfileForm(profile) {
     ABILITY_FIELDS.forEach(f => els.abilityGroup.appendChild(buildSliderRow(f, profile[f.key])));
     els.prefGroup.innerHTML = '';
     PREF_FIELDS.forEach(f => els.prefGroup.appendChild(buildSliderRow(f, profile[f.key], f.hint)));
+    els.weightGroup.innerHTML = '';
+    WEIGHT_FIELDS.forEach(f => {
+        const dflt = { weight_recommendation: 25, weight_sweetness: 20, weight_loading: 20, weight_interest: 20, weight_ability: 15 }[f.key];
+        els.weightGroup.appendChild(buildSliderRow(f, profile[f.key] ?? dflt));
+    });
+    // 權重滑桿拖動即時存檔重算
+    els.weightGroup.querySelectorAll('input[type=range]').forEach(inp => {
+        inp.addEventListener('input', scheduleWeightSave);
+    });
     buildInterestTags(profile.interests || []);
     profileState.loaded = true;
 }
@@ -106,10 +142,7 @@ export function initProfile() {
         e.preventDefault();
         if (!getToken()) return;
 
-        const body = { interests: [...profileState.selectedInterests] };
-        [...ABILITY_FIELDS, ...PREF_FIELDS].forEach(f => {
-            body[f.key] = Number(document.getElementById(`slider-${f.key}`).value);
-        });
+        const body = collectProfileBody();
 
         els.save.disabled = true;
         els.saved.hidden = true;

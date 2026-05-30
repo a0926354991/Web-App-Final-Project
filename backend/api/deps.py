@@ -72,6 +72,11 @@ def row_to_user_info(row: sqlite3.Row) -> UserInfo:
     return UserInfo(id=row["id"], username=row["username"], created_at=row["created_at"])
 
 
+def _row_get(row: sqlite3.Row, key: str, default):
+    """sqlite3.Row 沒有 .get();欄位不存在 (舊 DB 尚未 migrate) 時回 default。"""
+    return row[key] if key in row.keys() else default
+
+
 def row_to_profile(row: sqlite3.Row) -> UserProfile:
     return UserProfile(
         ability_logic=row["ability_logic"],
@@ -82,6 +87,11 @@ def row_to_profile(row: sqlite3.Row) -> UserProfile:
         pref_sweetness=row["pref_sweetness"],
         pref_loading=row["pref_loading"],
         interests=_json.loads(row["interests"]),
+        weight_recommendation=_row_get(row, "weight_recommendation", 25),
+        weight_sweetness=_row_get(row, "weight_sweetness", 20),
+        weight_loading=_row_get(row, "weight_loading", 20),
+        weight_interest=_row_get(row, "weight_interest", 20),
+        weight_ability=_row_get(row, "weight_ability", 15),
         updated_at=row["updated_at"],
     )
 

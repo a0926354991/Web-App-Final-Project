@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..db import get_conn
 from ..deps import dept_codes
-from ..recommendations import find_related_courses
+from ..recommendations import find_related_courses, period1_course_keys
 from ..schedule import parse_schedule
 from ..schemas import (
     CourseDetail,
@@ -96,11 +96,13 @@ def list_courses(
         return CourseSummary(**d)
 
     if no_period1:
-        # Python-side post-filter: parse slots and drop courses that have period '1'
+        # Python-side post-filter: 用啟動時建好的「含第 1 節」集合做 O(1) 判定,
+        # 取代每次請求對所有候選列 re-parse schedule_time (判定結果與原本一致)
+        period1 = period1_course_keys(conn)
         all_rows = conn.execute(select_sql.format(where_sql=where_sql), params).fetchall()
         filtered = [
             r for r in all_rows
-            if not any(str(p) == "1" for _, p in parse_schedule(r["schedule_time"]))
+            if (r["semester"], r["serial_no"]) not in period1
         ]
         total = len(filtered)
         rows = filtered[offset : offset + limit]

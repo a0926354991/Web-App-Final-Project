@@ -1,0 +1,10 @@
+# 後端 API 執行期依賴（Docker image 用這份,不含爬蟲依賴 Playwright/requests/bs4/anthropic）。
+# 完整開發依賴(含爬蟲 + 測試)請見 requirements.txt。
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+pandas>=2.0
+xlrd>=2.0           # 讀取 學系代碼表.xls
+google-genai>=0.3   # Gemini AI 功能;沒設 key 時自動 fallback
+python-dotenv>=1.0
+eval_type_backport>=0.2  # 舊版 Python 支援 X | None 語法

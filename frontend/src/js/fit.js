@@ -1,6 +1,6 @@
 // Dashboard 「為您推薦」 + 適合度分析 tab。
 import { getToken, fetchRecommendations, fetchProfile } from './api.js';
-import { courseId, escapeHtml, escapeAttr, lowSampleBadge, countUp } from './utils.js';
+import { courseId, escapeHtml, escapeAttr, estimatedBadge, countUp } from './utils.js';
 import { openDrawer } from './drawer.js';
 import { inSchedule } from './schedule.js';
 
@@ -37,7 +37,7 @@ export async function loadDashboardRecommendations() {
             const has = inSchedule(id);
             return `
             <div class="course-card" data-id="${escapeAttr(id)}">
-                <div class="course-card-tag fit-tag">適合度 <span class="fit-count" data-target="${it.fit.total.toFixed(0)}">${it.fit.total.toFixed(0)}</span>%${lowSampleBadge(it.fit.n_reviews)}</div>
+                <div class="course-card-tag fit-tag">適合度 <span class="fit-count" data-target="${it.fit.total.toFixed(0)}">${it.fit.total.toFixed(0)}</span>%${estimatedBadge(it.fit)}</div>
                 <div class="course-card-subtags">
                     <span class="tag">推薦 ${it.fit.recommendation.toFixed(0)}</span>
                     <span class="tag">甜 ${it.fit.sweetness.toFixed(0)}</span>
@@ -129,7 +129,7 @@ export async function renderFitAnalysisView() {
                     </div>
                     ${it.fit.explanation ? `<div class="fit-explanation">${escapeHtml(it.fit.explanation)}</div>` : ''}
                 </div>
-                <div class="fit-total-big">${it.fit.total.toFixed(0)}<span style="font-size:0.7em;color:#888">/100</span>${lowSampleBadge(it.fit.n_reviews)}</div>
+                <div class="fit-total-big">${it.fit.total.toFixed(0)}<span style="font-size:0.7em;color:#888">/100</span>${estimatedBadge(it.fit)}</div>
             </div>
         `).join('');
         listEl.querySelectorAll('.fit-list-item').forEach(el => {
