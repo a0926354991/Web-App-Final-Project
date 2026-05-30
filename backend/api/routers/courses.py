@@ -40,12 +40,15 @@ def list_courses(
     dept: str | None = Query(None, description="開課系所完全比對"),
     credits: str | None = Query(None, description="學分數完全比對"),
     semester: str | None = Query(None, description="學期 (e.g. 114-1, 114-2)"),
+    no_period1: bool = Query(False, description="過濾掉含第 1 節(早八)的課"),
+    min_sweetness: float | None = Query(None, ge=1.0, le=5.0, description="最低甜度均值 (1–5，需有 PTT 評價)"),
+    max_loading: float | None = Query(None, ge=1.0, le=5.0, description="最高 loading 均值 (1–5，需有 PTT 評價)"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> CourseListResponse:
     where: list[str] = []
-    params: list[str | int] = []
+    params: list[str | int | float] = []
 
     if q:
         where.append("(course_name LIKE ? OR teacher LIKE ? OR course_code LIKE ?)")
@@ -61,30 +64,54 @@ def list_courses(
     if credits:
         where.append("credits = ?")
         params.append(credits)
+    if min_sweetness is not None:
+        where.append(
+            "course_code IN ("
+            "SELECT course_id FROM reviews_structured GROUP BY course_id "
+            "HAVING AVG(CAST(NULLIF(sweetness,'') AS REAL)) >= ?)"
+        )
+        params.append(min_sweetness)
+    if max_loading is not None:
+        where.append(
+            "course_code IN ("
+            "SELECT course_id FROM reviews_structured GROUP BY course_id "
+            "HAVING AVG(CAST(NULLIF(workload,'') AS REAL)) <= ?)"
+        )
+        params.append(max_loading)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
-    total = conn.execute(
-        f"SELECT COUNT(*) FROM courses {where_sql}", params
-    ).fetchone()[0]
-
-    rows = conn.execute(
-        f"""
+    select_sql = """
         SELECT semester, serial_no, course_code, course_name, teacher,
                department, credits, schedule_time, location, language
         FROM courses
         {where_sql}
         ORDER BY semester DESC, course_code, serial_no
-        LIMIT ? OFFSET ?
-        """,
-        [*params, limit, offset],
-    ).fetchall()
+    """
 
     def _to_summary(r: sqlite3.Row) -> CourseSummary:
         d = dict(r)
         d["location"] = d.get("location") or ""  # DB 可能為 NULL
         d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
         return CourseSummary(**d)
+
+    if no_period1:
+        # Python-side post-filter: parse slots and drop courses that have period '1'
+        all_rows = conn.execute(select_sql.format(where_sql=where_sql), params).fetchall()
+        filtered = [
+            r for r in all_rows
+            if not any(str(p) == "1" for _, p in parse_schedule(r["schedule_time"]))
+        ]
+        total = len(filtered)
+        rows = filtered[offset : offset + limit]
+    else:
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM courses {where_sql}", params
+        ).fetchone()[0]
+        rows = conn.execute(
+            select_sql.format(where_sql=where_sql) + "LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
 
     return CourseListResponse(
         total=total,

@@ -201,6 +201,62 @@ function renderFitBox(fit) {
     `;
 }
 
+function computeReviewTags(reviews) {
+    if (!reviews || reviews.length === 0) return [];
+    const tags = [];
+    const recs   = reviews.map(r => parseFloat(r.recommendation)).filter(v => !isNaN(v));
+    const sweets = reviews.map(r => parseFloat(r.sweetness)).filter(v => !isNaN(v));
+    const loads  = reviews.map(r => parseFloat(r.workload)).filter(v => !isNaN(v));
+    const text   = reviews.map(r => r.summary || '').join(' ');
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    const avgRec   = avg(recs);
+    const avgSweet = avg(sweets);
+    const avgLoad  = avg(loads);
+    if (avgRec   !== null && avgRec   >= 4.0) tags.push({ label: '#高推薦',   cls: 'tag-green' });
+    else if (avgRec !== null && avgRec <= 2.0) tags.push({ label: '#低推薦',  cls: 'tag-red' });
+    if (avgSweet !== null && avgSweet >= 3.8) tags.push({ label: '#給分甜',   cls: 'tag-green' });
+    else if (avgSweet !== null && avgSweet <= 2.2) tags.push({ label: '#給分嚴', cls: 'tag-orange' });
+    if (avgLoad  !== null && avgLoad  >= 3.8) tags.push({ label: '#硬課',     cls: 'tag-red' });
+    else if (avgLoad  !== null && avgLoad  <= 2.2) tags.push({ label: '#輕鬆', cls: 'tag-green' });
+    if (/點名/.test(text))            tags.push({ label: '#點名',   cls: 'tag-orange' });
+    if (/期末考|期末考試/.test(text)) tags.push({ label: '#期末考', cls: 'tag-blue' });
+    if (/期末報告|期末作業/.test(text))tags.push({ label: '#期末報告', cls: 'tag-blue' });
+    if (/小組|分組/.test(text))       tags.push({ label: '#小組',   cls: 'tag-blue' });
+    return tags;
+}
+
+function renderReviewTags(tags) {
+    if (!tags || tags.length === 0) return '';
+    return `<div class="review-hashtag-row">${tags.map(t =>
+        `<span class="review-hashtag ${escapeAttr(t.cls)}">${escapeHtml(t.label)}</span>`
+    ).join('')}</div>`;
+}
+
+function detectCourseWarnings(d) {
+    const text = [d.overview, d.objectives, d.requirements].filter(Boolean).join(' ');
+    const hasPrereq = /先修|需已修|需修過|必須修過|須已完成|prerequisite/i.test(text);
+    const hasRestrict = /限[\u4e00-\u9fa5]{1,8}系|限[\u4e00-\u9fa5]{1,5}學系|不開放一般|僅限|擋修/.test(text);
+    return { hasPrereq, hasRestrict };
+}
+
+function renderCourseWarnings(d) {
+    const { hasPrereq, hasRestrict } = detectCourseWarnings(d);
+    let html = '';
+    if (hasPrereq) {
+        html += `<div class="prereq-warn-banner">
+            <i class="fas fa-exclamation-triangle warn-icon"></i>
+            <span><strong>先修提醒：</strong>此課程說明中提及先修要求，請確認你已具備相關知識背景。詳見下方「AI 先修建議」。</span>
+        </div>`;
+    }
+    if (hasRestrict) {
+        html += `<div class="restrict-warn-banner">
+            <i class="fas fa-ban warn-icon"></i>
+            <span><strong>選課限制：</strong>此課程可能有系所或身份限制，選課前請確認是否符合資格。</span>
+        </div>`;
+    }
+    return html;
+}
+
 function renderDrawerContent(d, reviews) {
     drawerState.currentId = courseId(d);
     const sortedReviews = [...reviews].sort((a, b) => {
@@ -244,6 +300,7 @@ function renderDrawerContent(d, reviews) {
     const addBtn = scheduleToggleBtn(d) + wishlistToggleBtn(d) + histBtn;
 
     return `
+        ${renderCourseWarnings(d)}
         <div class="drawer-section">
             <div class="course-name-big">${escapeHtml(d.course_name)}</div>
             <div class="course-meta-row"><strong>學期</strong> ${escapeHtml(d.semester)}　|　<strong>課號</strong> ${escapeHtml(d.course_code)}　|　<strong>流水號</strong> ${escapeHtml(d.serial_no)}</div>
@@ -261,6 +318,7 @@ function renderDrawerContent(d, reviews) {
 
         <div class="drawer-section">
             <h3>PTT 評價 (${reviews.length})</h3>
+            ${renderReviewTags(computeReviewTags(reviews))}
             ${reviewsHtml}
         </div>
 

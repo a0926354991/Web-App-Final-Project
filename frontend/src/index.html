@@ -171,6 +171,26 @@
                         </button>
                     </div>
 
+                    <div class="filter-bar-extra">
+                        <span class="filter-extra-label"><i class="fas fa-sliders-h"></i> 進階篩選：</span>
+                        <label class="filter-extra-checkbox">
+                            <input type="checkbox" id="filter-no-period1">
+                            不要早八（排除含第 1 節的課）
+                        </label>
+                        <select id="filter-min-sweetness">
+                            <option value="">甜度不限</option>
+                            <option value="3">甜度 ≥ 3（有 PTT 評價）</option>
+                            <option value="3.5">甜度 ≥ 3.5</option>
+                            <option value="4">甜度 ≥ 4（超甜）</option>
+                        </select>
+                        <select id="filter-max-loading">
+                            <option value="">Loading 不限</option>
+                            <option value="3">Loading ≤ 3（有 PTT 評價）</option>
+                            <option value="2.5">Loading ≤ 2.5（輕鬆）</option>
+                            <option value="2">Loading ≤ 2（超輕鬆）</option>
+                        </select>
+                    </div>
+
                     <div class="results-meta" id="results-meta">尚未搜尋</div>
 
                     <div class="results-table-wrapper">
@@ -263,6 +283,9 @@
                     <div class="schedule-toolbar">
                         <span id="schedule-summary" class="results-meta">尚未加入任何課程</span>
                         <div>
+                            <button class="ai-btn" id="schedule-fill-btn" title="推薦不衝堂且最適合你的課">
+                                <i class="fas fa-puzzle-piece"></i> 空堂填補推薦
+                            </button>
                             <button class="ai-btn" id="schedule-vibe-btn">
                                 <i class="fas fa-wand-magic-sparkles"></i> 課表健檢
                             </button>
@@ -276,6 +299,7 @@
                         </div>
                     </div>
                     <div id="schedule-conflicts" class="schedule-conflict-banner" hidden></div>
+                    <div id="schedule-fill-result"></div>
                     <div id="schedule-vibe-result"></div>
                     <div id="schedule-ai-balance-result"></div>
                     <div class="card schedule-card">

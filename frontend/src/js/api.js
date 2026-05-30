@@ -84,6 +84,7 @@ export const fetchCourseSummary = (id) => apiGet(`/me/courses/${courseUrlPath(id
 export const fetchSubstitutes = (id, limit = 5) => apiGet(`/me/courses/${courseUrlPath(id)}/substitutes?limit=${limit}`, { auth: true, allowAny: true });
 export const summarizeHistory = (historyId) => apiSend('POST', `/me/history/${historyId}/summarize`, undefined, { auth: true });
 export const fetchScheduleBalance = (items) => apiSend('POST', '/me/schedule/balance', { items }, { auth: true });
+export const fetchFillRecommend = (occupied_slots, limit = 10) => apiSend('POST', '/me/schedule/fill-recommend', { occupied_slots, limit }, { auth: true });
 export const fetchSuggestedInterests = () => apiGet('/me/suggested-interests', { auth: true, allowAny: true });
 export const fetchTeacherStyle = (name) => apiGet(`/teachers/${encodeURIComponent(name)}/style`, { allowAny: true });
 export const fetchPrerequisites = (id) => apiGet(`/courses/${courseUrlPath(id)}/prerequisites`, { allowAny: true });

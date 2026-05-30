@@ -119,6 +119,12 @@ class FitsBatchRequest(BaseModel):
     items: list[CourseRef]
 
 
+class FillRecommendRequest(BaseModel):
+    """空堂填補推薦：傳入已佔用的時段，回傳不衝堂且適合度最高的推薦。"""
+    occupied_slots: list[list] = Field(default_factory=list, description="[[weekday_int, period_str], ...]")
+    limit: int = Field(10, ge=1, le=30)
+
+
 class RecommendationItem(BaseModel):
     semester: str
     serial_no: str

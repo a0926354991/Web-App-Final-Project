@@ -22,8 +22,10 @@ from ..auth import get_current_user
 from ..db import get_conn
 from ..deps import load_profile_dict, row_to_profile
 from ..recommendations import aggregate_course_stats, compute_fit
+from ..schedule import parse_schedule
 from ..schemas import (
     FitBreakdown,
+    FillRecommendRequest,
     FitsBatchRequest,
     HistoryAdd,
     HistoryItem,
@@ -224,6 +226,76 @@ def my_fit(
         },
     )
     return FitBreakdown(**fit)
+
+
+@router.post("/schedule/fill-recommend", response_model=list[RecommendationItem])
+def fill_recommend(
+    body: FillRecommendRequest,
+    current: sqlite3.Row = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> list[RecommendationItem]:
+    """找出與已排課表不衝堂、且適合度最高的推薦課程。"""
+    profile = load_profile_dict(conn, current["id"])
+    stats_map = aggregate_course_stats(conn)
+    if not stats_map:
+        return []
+
+    taken_codes = {
+        r["course_code"]
+        for r in conn.execute(
+            """SELECT DISTINCT c.course_code FROM user_history h
+               JOIN courses c ON c.semester = h.semester AND c.serial_no = h.serial_no
+               WHERE h.user_id = ?""",
+            (current["id"],),
+        ).fetchall()
+    }
+
+    occupied: set[tuple[int, str]] = set()
+    for slot in (body.occupied_slots or []):
+        if len(slot) >= 2:
+            occupied.add((int(slot[0]), str(slot[1])))
+
+    placeholders = ",".join("?" * len(stats_map))
+    reps = conn.execute(
+        f"""SELECT c.semester, c.serial_no, c.course_code, c.course_name,
+                   c.teacher, c.department, c.credits, c.schedule_time
+            FROM courses c
+            JOIN (
+                SELECT course_code, MAX(semester || '_' || serial_no) AS marker
+                FROM courses WHERE course_code IN ({placeholders})
+                GROUP BY course_code
+            ) m ON m.course_code = c.course_code
+                AND m.marker = c.semester || '_' || c.serial_no""",
+        list(stats_map.keys()),
+    ).fetchall()
+
+    scored: list[tuple[float, dict, dict]] = []
+    for r in reps:
+        code = r["course_code"]
+        if code in taken_codes:
+            continue
+        slots = parse_schedule(r["schedule_time"])
+        if slots and occupied:
+            slot_set = {(wd, p) for wd, p in slots}
+            if slot_set & occupied:  # conflict → skip
+                continue
+        fit = compute_fit(profile, stats_map.get(code), (r["semester"], r["serial_no"]), use_llm=False)
+        scored.append((fit["total"], dict(r), fit))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [
+        RecommendationItem(
+            semester=r["semester"],
+            serial_no=r["serial_no"],
+            course_code=r["course_code"],
+            course_name=r["course_name"],
+            teacher=r["teacher"] or "",
+            department=r["department"] or "",
+            credits=r["credits"] or "",
+            fit=FitBreakdown(**fit),
+        )
+        for _, r, fit in scored[: body.limit]
+    ]
 
 
 @router.post("/fits", response_model=dict[str, FitBreakdown])

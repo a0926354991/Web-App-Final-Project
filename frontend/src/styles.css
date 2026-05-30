@@ -2903,3 +2903,160 @@ body.theme-dark .lucky-card .lucky-why { color: #b9beff; }
 .vibe-msg { padding: 10px; color: #888; }
 body.theme-dark .vibe-stats { color: #aab0e0; }
 body.theme-dark .vibe-roasts li { color: #dfe2ff; }
+
+/* =========================================================================
+   Feature 1: 評價 Hashtag 標籤
+   ========================================================================= */
+.review-hashtag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.review-hashtag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.review-hashtag.tag-green  { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.review-hashtag.tag-red    { background: #fde8e8; color: #c62828; border: 1px solid #ef9a9a; }
+.review-hashtag.tag-orange { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+.review-hashtag.tag-blue   { background: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; }
+body.theme-dark .review-hashtag.tag-green  { background: rgba(76,175,80,0.15);  color: #81c784; border-color: rgba(76,175,80,0.3); }
+body.theme-dark .review-hashtag.tag-red    { background: rgba(239,83,80,0.15);  color: #ef9a9a; border-color: rgba(239,83,80,0.3); }
+body.theme-dark .review-hashtag.tag-orange { background: rgba(255,167,38,0.15); color: #ffb74d; border-color: rgba(255,167,38,0.3); }
+body.theme-dark .review-hashtag.tag-blue   { background: rgba(66,165,245,0.15); color: #90caf9; border-color: rgba(66,165,245,0.3); }
+
+/* =========================================================================
+   Feature 2: 篩選列多維度條件 (extra filter row)
+   ========================================================================= */
+.filter-bar-extra {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 16px 10px;
+    background: #f8f9fa;
+    border-top: 1px solid #e8eaed;
+    font-size: 0.88rem;
+}
+.filter-extra-label {
+    color: #666;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.filter-extra-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    color: #444;
+}
+.filter-extra-checkbox input { cursor: pointer; }
+body.theme-dark .filter-bar-extra {
+    background: #1a1d23;
+    border-top-color: #2a2d33;
+    color: #b0b0b0;
+}
+body.theme-dark .filter-extra-label { color: #999; }
+body.theme-dark .filter-extra-checkbox { color: #c0c0c0; }
+
+/* =========================================================================
+   Feature 3: 空堂填補推薦 result box
+   ========================================================================= */
+.fill-recommend-box {
+    margin: 14px 0;
+    border: 1px solid #dde6f7;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.fill-recommend-header {
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #e8f0fe, #f3e8fd);
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #3949ab;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.fill-recommend-list {
+    padding: 8px 0;
+}
+.fill-recommend-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid #f0f2f5;
+    transition: background 0.15s;
+}
+.fill-recommend-item:last-child { border-bottom: none; }
+.fill-recommend-item:hover { background: #f5f8ff; }
+.fill-recommend-item-name { font-weight: 500; font-size: 0.9rem; }
+.fill-recommend-item-meta { font-size: 0.78rem; color: #888; margin-top: 2px; }
+body.theme-dark .fill-recommend-box { border-color: #353a45; }
+body.theme-dark .fill-recommend-header { background: linear-gradient(135deg, rgba(80,120,200,0.18), rgba(120,80,200,0.15)); color: #aab5ff; }
+body.theme-dark .fill-recommend-item { border-bottom-color: #2a2d33; color: #d0d0d0; }
+body.theme-dark .fill-recommend-item:hover { background: rgba(255,255,255,0.04); }
+body.theme-dark .fill-recommend-item-meta { color: #8899aa; }
+
+/* =========================================================================
+   Feature 4: 先修/擋修預警 banner
+   ========================================================================= */
+.prereq-warn-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    color: #6d4c00;
+    line-height: 1.5;
+}
+.prereq-warn-banner .warn-icon {
+    font-size: 1rem;
+    color: #f57f17;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.prereq-warn-banner strong { color: #e65100; }
+.restrict-warn-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: #fce4ec;
+    border: 1px solid #f48fb1;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    color: #880e4f;
+    line-height: 1.5;
+}
+.restrict-warn-banner .warn-icon {
+    font-size: 1rem;
+    color: #c62828;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+body.theme-dark .prereq-warn-banner {
+    background: rgba(255,200,50,0.1);
+    border-color: rgba(255,200,50,0.3);
+    color: #ffd54f;
+}
+body.theme-dark .prereq-warn-banner strong { color: #ffb74d; }
+body.theme-dark .restrict-warn-banner {
+    background: rgba(239,83,80,0.1);
+    border-color: rgba(239,83,80,0.3);
+    color: #ef9a9a;
+}

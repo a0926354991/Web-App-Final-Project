@@ -1,6 +1,6 @@
 // 我的課表 — localStorage 持久化 + 衝堂偵測 + 視覺化週課表 + PDF 匯出。
 import { SCHEDULE_KEY, WEEKDAY_LABELS, PERIOD_ORDER } from './config.js';
-import { fetchCourse, fetchScheduleBalance, getToken } from './api.js';
+import { fetchCourse, fetchScheduleBalance, fetchFillRecommend, getToken } from './api.js';
 import { courseId, escapeHtml, escapeAttr, toast, exportToPDF } from './utils.js';
 import { openDrawer } from './drawer.js';
 
@@ -271,6 +271,45 @@ export function initSchedule() {
                     <ul class="vibe-roasts">${roastHtml}</ul>
                 </div>
             </div>`;
+    });
+
+    document.getElementById('schedule-fill-btn').addEventListener('click', async () => {
+        if (!getToken()) {
+            toast('請先登入才能使用空堂填補推薦', 'warn');
+            return;
+        }
+        const sched = getSchedule();
+        const occupied = Object.values(sched).flatMap(c => (c.slots || []).map(([wd, p]) => [wd, p]));
+        const slot = document.getElementById('schedule-fill-result');
+        const btn = document.getElementById('schedule-fill-btn');
+        btn.disabled = true;
+        slot.innerHTML = '<div class="fill-recommend-box"><div class="fill-recommend-header"><i class="fas fa-spinner fa-spin"></i> 計算中…</div></div>';
+        try {
+            const items = await fetchFillRecommend(occupied, 8);
+            if (!items || items.length === 0) {
+                slot.innerHTML = '<div class="fill-recommend-box"><div class="fill-recommend-header">沒有找到不衝堂的推薦（先設定個人偏好或增加修課歷史以提升準確度）</div></div>';
+                return;
+            }
+            const listHtml = items.map(c => `
+                <div class="fill-recommend-item" data-id="${escapeAttr(c.semester + '__' + c.serial_no)}">
+                    <div>
+                        <div class="fill-recommend-item-name">${escapeHtml(c.course_name)}</div>
+                        <div class="fill-recommend-item-meta">${escapeHtml(c.teacher || '—')} · ${escapeHtml(c.department || '—')} · ${escapeHtml(c.credits)} 學分</div>
+                    </div>
+                    <span class="fit-badge ${c.fit.total >= 75 ? 'fit-high' : c.fit.total >= 55 ? 'fit-mid' : 'fit-low'}">${c.fit.total.toFixed(0)}</span>
+                </div>`).join('');
+            slot.innerHTML = `<div class="fill-recommend-box">
+                <div class="fill-recommend-header"><i class="fas fa-magic"></i> 空堂填補推薦（不衝堂、適合你）</div>
+                <div class="fill-recommend-list">${listHtml}</div>
+            </div>`;
+            slot.querySelectorAll('.fill-recommend-item').forEach(el => {
+                el.addEventListener('click', () => openDrawer(el.dataset.id));
+            });
+        } catch (err) {
+            slot.innerHTML = '<div class="fill-recommend-box"><div class="fill-recommend-header" style="color:#c33">查詢失敗</div></div>';
+        } finally {
+            btn.disabled = false;
+        }
     });
 
     document.getElementById('schedule-ai-balance').addEventListener('click', async () => {

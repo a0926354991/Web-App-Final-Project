@@ -127,9 +127,8 @@ source .venv/bin/activate
 uvicorn backend.api.main:app --reload
 # Swagger 文件: http://localhost:8000/docs
 
-# Terminal 2: 前端 static server
-cd frontend/src
-python3 -m http.server 5500
+# Terminal 2: 前端 static server（從專案根目錄執行，勿 cd 進去）
+python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend/src
 ```
 
 **選項 B:Docker compose 一鍵啟動 (示範 / 部署用)**

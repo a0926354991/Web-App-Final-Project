@@ -12,6 +12,9 @@ const els = {
     filterDept: document.getElementById('filter-dept'),
     filterCredits: document.getElementById('filter-credits'),
     filterSemesterTabs: document.getElementById('filter-semester-tabs'),
+    filterNoPeriod1: document.getElementById('filter-no-period1'),
+    filterMinSweetness: document.getElementById('filter-min-sweetness'),
+    filterMaxLoading: document.getElementById('filter-max-loading'),
     searchBtn: document.getElementById('search-btn'),
     resultsBody: document.getElementById('results-body'),
     resultsMeta: document.getElementById('results-meta'),
@@ -81,15 +84,21 @@ export async function searchCourses({ keepParams = false } = {}) {
             dept: els.filterDept.value,
             credits: els.filterCredits.value,
             semester: activeSemBtn ? activeSemBtn.dataset.sem : '',
+            no_period1: els.filterNoPeriod1.checked,
+            min_sweetness: els.filterMinSweetness.value,
+            max_loading: els.filterMaxLoading.value,
         };
     }
 
     const params = new URLSearchParams();
-    const { q, dept, credits, semester } = discoverState.currentParams;
+    const { q, dept, credits, semester, no_period1, min_sweetness, max_loading } = discoverState.currentParams;
     if (q) params.set('q', q);
     if (dept) params.set('dept', dept);
     if (credits) params.set('credits', credits);
     if (semester) params.set('semester', semester);
+    if (no_period1) params.set('no_period1', 'true');
+    if (min_sweetness) params.set('min_sweetness', min_sweetness);
+    if (max_loading) params.set('max_loading', max_loading);
     params.set('limit', PAGE_SIZE);
     params.set('offset', discoverState.offset);
 
