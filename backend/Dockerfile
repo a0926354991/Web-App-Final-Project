@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir \
 # 複製 backend 程式碼
 COPY backend/ /app/backend/
 
+# 建立資料庫
+RUN python backend/scripts/ingest_csv.py 
+
 # Port
 EXPOSE 8000
 
