@@ -8,7 +8,7 @@ import { initRadarChart } from './dashboard.js';
 import { initChrome } from './chrome.js';
 import { initAuth, bootstrapAuth } from './auth.js';
 import { initDrawer } from './drawer.js';
-import { initCompare } from './compare.js';
+import { initCompare, loadCompareFromUrl } from './compare.js';
 import { initHistory } from './history.js';
 import { initWishlist } from './wishlist.js';
 import { initSchedule } from './schedule.js';
@@ -25,4 +25,7 @@ initSchedule();
 initProfile();
 initLucky();
 initChrome();
-bootstrapAuth();
+bootstrapAuth().then(() => {
+    // 登入狀態確認或資料首次載入後，讀取 URL 的比較參數並展開 Modal
+    loadCompareFromUrl();
+});
