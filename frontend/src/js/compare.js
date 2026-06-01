@@ -28,6 +28,17 @@ function updateCompareFab() {
     const n = compareState.ids.size;
     compareFab.hidden = n === 0;
     compareCountEl.textContent = n;
+    updateCompareUrl();
+}
+
+function updateCompareUrl() {
+    const url = new URL(window.location);
+    if (compareState.ids.size > 0) {
+        url.searchParams.set('compare', Array.from(compareState.ids).join(','));
+    } else {
+        url.searchParams.delete('compare');
+    }
+    history.replaceState(null, '', url);
 }
 
 function clearCompare() {
@@ -209,6 +220,39 @@ function renderCompareTable(courses, fits) {
             </tbody>
         </table>
     `;
+}
+
+export async function loadCompareFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const compareParam = params.get('compare');
+    if (!compareParam) return;
+
+    const ids = [...new Set(compareParam.split(','))].slice(0, MAX_COMPARE);
+    if (ids.length === 0) return;
+
+    let validCount = 0;
+    let anyInvalid = false;
+
+    // Load courses to check validity
+    const checks = await Promise.all(ids.map(id => fetchCourse(id).catch(() => null)));
+    
+    checks.forEach((course, index) => {
+        if (course) {
+            compareState.ids.add(ids[index]);
+            validCount++;
+        } else {
+            anyInvalid = true;
+        }
+    });
+
+    if (anyInvalid) {
+        toast('連結中部分課程無法找到', 'warn');
+    }
+
+    if (validCount > 0) {
+        updateCompareFab();
+        openCompareModal();
+    }
 }
 
 export function initCompare() {
