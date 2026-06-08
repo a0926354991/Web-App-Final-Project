@@ -90,8 +90,10 @@ def list_courses(
     """
 
     def _to_summary(r: sqlite3.Row) -> CourseSummary:
-        d = dict(r)
-        d["location"] = d.get("location") or ""  # DB 可能為 NULL
+        # DB 任何欄位都可能為 NULL (e.g. language/location 各有 1146 筆),
+        # 但 CourseSummary 的字串欄位皆必填,直接傳 None 會 ValidationError → 500。
+        # 一律把 NULL 轉空字串 (與 get_course 的 CourseDetail builder 同策略)。
+        d = {k: (v if v is not None else "") for k, v in dict(r).items()}
         d["slots"] = [list(s) for s in parse_schedule(d.get("schedule_time"))]
         return CourseSummary(**d)
 
