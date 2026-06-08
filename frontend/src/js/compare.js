@@ -47,6 +47,20 @@ function clearCompare() {
     document.querySelectorAll('#results-body .compare-check').forEach(cb => { cb.checked = false; });
 }
 
+// 從比較移除單一課程:同步取消探索頁該列的勾選,更新 FAB / URL,
+// 還有剩課就重渲染比較表,沒了就關掉 Modal。
+function removeFromCompare(id) {
+    compareState.ids.delete(id);
+    const cb = document.querySelector(`#results-body .compare-check[data-id="${id}"]`);
+    if (cb) cb.checked = false;
+    updateCompareFab();
+    if (compareState.ids.size === 0) {
+        closeCompareModal();
+    } else {
+        openCompareModal();  // 重抓剩下的課重渲染
+    }
+}
+
 export function closeCompareModal() { compareModal.hidden = true; }
 
 async function openCompareModal() {
@@ -62,6 +76,11 @@ async function openCompareModal() {
             fits = await fetchBatchFits(ids.map(id => parseCourseId(id))).catch(() => ({}));
         }
         compareBody.innerHTML = renderCompareTable(courses, fits);
+
+        // 每欄的「移除此課」✕ 按鈕
+        compareBody.querySelectorAll('[data-remove-id]').forEach(btn => {
+            btn.addEventListener('click', () => removeFromCompare(btn.dataset.removeId));
+        });
 
         // 「AI 找替代」按鈕
         compareBody.querySelectorAll('[data-sub-id]').forEach(btn => {
@@ -144,6 +163,10 @@ function renderCompareTable(courses, fits) {
 
     const cols = courses.map(c => `
         <th class="course-header course-col">
+            <button class="compare-remove-col" data-remove-id="${escapeAttr(courseId(c))}"
+                    title="從比較移除此課" aria-label="移除 ${escapeAttr(c.course_name)}">
+                <i class="fas fa-times"></i>
+            </button>
             <span class="compare-course-name">${escapeHtml(c.course_name)}</span>
             <span class="compare-course-meta">${escapeHtml(c.course_code)} · ${escapeHtml(c.semester)} · 流水號 ${escapeHtml(c.serial_no)}</span>
         </th>

@@ -1758,8 +1758,43 @@
             text-align: left;
             font-size: 0.95rem;
             color: #222;
-            padding: 14px 12px;
+            padding: 14px 32px 14px 12px;
             border-bottom: 2px solid var(--active-blue);
+            position: relative;
+        }
+
+        .compare-remove-col {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.06);
+            color: #666;
+            cursor: pointer;
+            font-size: 0.8rem;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .compare-remove-col:hover {
+            background: #e53935;
+            color: #fff;
+        }
+
+        body.theme-dark .compare-remove-col {
+            background: rgba(255, 255, 255, 0.12);
+            color: #ccc;
+        }
+
+        body.theme-dark .compare-remove-col:hover {
+            background: #e53935;
+            color: #fff;
         }
 
         .compare-course-name {
