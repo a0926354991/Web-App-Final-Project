@@ -1,0 +1,11 @@
+{
+  "name": "web-app-final-project",
+  "private": true,
+  "version": "0.0.0",
+  "description": "NemoClaw Multi-Agent Verification Gate scripts. Not a JS build target — the frontend is vanilla HTML/CSS/JS and the backend is Python.",
+  "scripts": {
+    "agent:build-gate": "bash scripts/run-build-gate.sh",
+    "agent:verify-report": "python3 scripts/verify-agent-report.py",
+    "agent:validate-react": "python3 scripts/validate-react-diff.py"
+  }
+}

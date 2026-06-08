@@ -28,3 +28,9 @@ backend/data/*.db.bak.*
 
 # Skill driver 產生的截圖 (每次 smoke 重產,不入庫)
 .claude/skills/*/screenshots/
+
+# NemoClaw gate 執行 log (每次跑會覆蓋,不入庫)
+artifacts/*.log
+
+# npm
+node_modules/
