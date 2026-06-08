@@ -75,10 +75,10 @@ def update_my_profile(
         INSERT INTO user_profiles (
             user_id, ability_logic, ability_writing, ability_coding,
             ability_humanities, ability_teamwork,
-            pref_sweetness, pref_loading, interests,
+            pref_sweetness, pref_loading, interests, department,
             weight_recommendation, weight_sweetness, weight_loading,
             weight_interest, weight_ability, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET
             ability_logic = excluded.ability_logic,
             ability_writing = excluded.ability_writing,
@@ -88,6 +88,7 @@ def update_my_profile(
             pref_sweetness = excluded.pref_sweetness,
             pref_loading = excluded.pref_loading,
             interests = excluded.interests,
+            department = excluded.department,
             weight_recommendation = excluded.weight_recommendation,
             weight_sweetness = excluded.weight_sweetness,
             weight_loading = excluded.weight_loading,
@@ -99,7 +100,7 @@ def update_my_profile(
             current["id"],
             body.ability_logic, body.ability_writing, body.ability_coding,
             body.ability_humanities, body.ability_teamwork,
-            body.pref_sweetness, body.pref_loading, interests_json,
+            body.pref_sweetness, body.pref_loading, interests_json, body.department,
             body.weight_recommendation, body.weight_sweetness, body.weight_loading,
             body.weight_interest, body.weight_ability,
         ),
@@ -160,6 +161,33 @@ def my_recommendations(
         list(stats_map.keys()),
     ).fetchall()
 
+    # 候選池補強:把「使用者本系開的課」也納入 (即使沒有 PTT 評價)。
+    # 原本候選只有「有 PTT 評價」的 course_code,本系課多半無評價會整批漏掉。
+    # 本系課用冷啟動代理 stats (同課號前綴 / 同系所均值) 評分,並標 is_estimated。
+    user_dept = (profile.get("department") or "").strip()
+    proxy = build_proxy_stats(conn) if user_dept else None
+    own_dept_keys: set[tuple[str, str]] = set()
+    if user_dept:
+        dept_reps = conn.execute(
+            """
+            SELECT c.semester, c.serial_no, c.course_code,
+                   c.course_name, c.teacher, c.department, c.credits
+            FROM courses c
+            JOIN (
+                SELECT course_code, MAX(semester || '_' || serial_no) AS marker
+                FROM courses
+                WHERE department LIKE ?
+                GROUP BY course_code
+            ) m ON m.course_code = c.course_code
+                AND m.marker = c.semester || '_' || c.serial_no
+            """,
+            (f"%{user_dept}%",),
+        ).fetchall()
+        own_dept_keys = {(r["semester"], r["serial_no"]) for r in dept_reps}
+        reps = list(reps) + [r for r in dept_reps
+                             if (r["semester"], r["serial_no"]) not in
+                             {(x["semester"], x["serial_no"]) for x in reps}]
+
     # 第一輪:對所有候選課程算 fit (不呼叫 LLM,純計算 → 快)
     scored: list[tuple[float, dict, dict]] = []  # (total, row, fit)
     for r in reps:
@@ -167,21 +195,52 @@ def my_recommendations(
         if code in taken_codes:
             continue
         course_key = (r["semester"], r["serial_no"])
-        fit = compute_fit(profile, stats_map.get(code), course_key, use_llm=False, weights=weights)
+        course_stats = stats_map.get(code)
+        estimated = False
+        # 本系課若無真實評價 → 用冷啟動代理 stats (同前綴 / 同系所均值)
+        if course_stats is None and proxy is not None and course_key in own_dept_keys:
+            course_stats, estimated = resolve_stats(code, r["department"] or "", stats_map, proxy)
+        fit = compute_fit(profile, course_stats, course_key, use_llm=False,
+                          weights=weights, estimated=estimated)
         scored.append((fit["total"], dict(r), fit))
 
     scored.sort(key=lambda x: x[0], reverse=True)
 
+    # 本系保底名額:Top N 至少保留約一半給「本系課」(依分數取最高的本系課),
+    # 其餘名額給全校最高適合度課。設計理念是「本系優先 + 全校探索」:既然使用者
+    # 標明了科系,本系課缺 PTT 評價不該被完全埋沒,但也不犧牲全校高適合度的好課。
+    # 未填科系 (own_dept_keys 空) → quota=0,完全是原本的全校排序,不受影響。
+    def _is_own(row: dict) -> bool:
+        return (row["semester"], row["serial_no"]) in own_dept_keys
+
+    if own_dept_keys:
+        # 本系優先:約 80% 名額保底給本系課,剩餘留給全校高適合度好課。
+        # 本系課不足 quota 時自然只補得到那麼多,其餘照樣由全校排序遞補。
+        quota = max(1, round(limit * 0.8))
+        own_ranked = [s for s in scored if _is_own(s[1])][:quota]
+        own_picked = {(s[1]["semester"], s[1]["serial_no"]) for s in own_ranked}
+        rest = [s for s in scored if (s[1]["semester"], s[1]["serial_no"]) not in own_picked]
+        top = (own_ranked + rest)[:limit]
+        top.sort(key=lambda x: x[0], reverse=True)  # 最終仍依分數呈現
+    else:
+        top = scored[:limit]
+
     # 第二輪:只對 top-N 重新生成 LLM explanation,平行呼叫
-    top = scored[:limit]
 
     def _enrich(r: dict, fit: dict) -> RecommendationItem:
         course_key = (r["semester"], r["serial_no"])
+        course_stats = stats_map.get(r["course_code"])
+        estimated = False
+        if course_stats is None and proxy is not None and course_key in own_dept_keys:
+            course_stats, estimated = resolve_stats(
+                r["course_code"], r["department"] or "", stats_map, proxy
+            )
         llm_fit = compute_fit(
-            profile, stats_map.get(r["course_code"]), course_key,
+            profile, course_stats, course_key,
             use_llm=True,
             use_semantic=True,  # top-N 重排才開 embedding 語意加成 (只 N 次,有快取)
             weights=weights,
+            estimated=estimated,
             course_meta={
                 "course_name": r["course_name"] or "",
                 "department": r["department"] or "",

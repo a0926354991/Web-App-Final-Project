@@ -13,6 +13,7 @@ export const compareState = { ids: new Set() };
 export const profileState = {
     loaded: false,
     selectedInterests: new Set(),
+    department: '',
 };
 
 export const historyState = {

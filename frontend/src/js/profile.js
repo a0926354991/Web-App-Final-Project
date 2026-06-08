@@ -1,7 +1,7 @@
 // 使用者資訊輸入頁(能力 / 偏好 / 興趣)。
 import { ABILITY_FIELDS, PREF_FIELDS, WEIGHT_FIELDS, INTEREST_OPTIONS } from './config.js';
 import { profileState } from './state.js';
-import { getToken, fetchProfile, saveProfile, fetchSuggestedInterests } from './api.js';
+import { getToken, fetchProfile, saveProfile, fetchSuggestedInterests, fetchDepartments } from './api.js';
 import { toast, escapeHtml } from './utils.js';
 import { updateRadarFromProfile } from './dashboard.js';
 import { loadDashboardRecommendations } from './fit.js';
@@ -13,13 +13,35 @@ const els = {
     prefGroup: document.getElementById('pref-group'),
     weightGroup: document.getElementById('weight-group'),
     interestTags: document.getElementById('interest-tags'),
+    dept: document.getElementById('profile-dept'),
     save: document.getElementById('profile-save'),
     saved: document.getElementById('profile-saved'),
 };
 
+// 系所下拉只需填一次。沿用 /departments(與探索頁同來源)。
+let _deptsLoaded = false;
+async function ensureDeptOptions() {
+    if (_deptsLoaded) return;
+    try {
+        const depts = await fetchDepartments();
+        depts.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.name;
+            opt.textContent = d.code ? `${d.code}  ${d.name}` : d.name;
+            els.dept.appendChild(opt);
+        });
+        _deptsLoaded = true;
+    } catch (err) {
+        console.error('載入系所清單失敗:', err);
+    }
+}
+
 // 收集整份 profile（能力 + 偏好 + 權重 + 興趣）成 request body
 function collectProfileBody() {
-    const body = { interests: [...profileState.selectedInterests] };
+    const body = {
+        interests: [...profileState.selectedInterests],
+        department: els.dept ? els.dept.value : '',
+    };
     [...ABILITY_FIELDS, ...PREF_FIELDS, ...WEIGHT_FIELDS].forEach(f => {
         const el = document.getElementById(`slider-${f.key}`);
         if (el) body[f.key] = Number(el.value);
@@ -92,6 +114,8 @@ function renderProfileForm(profile) {
         inp.addEventListener('input', scheduleWeightSave);
     });
     buildInterestTags(profile.interests || []);
+    profileState.department = profile.department || '';
+    if (els.dept) els.dept.value = profileState.department;
     profileState.loaded = true;
 }
 
@@ -103,9 +127,15 @@ export async function renderProfileView() {
     }
     els.needLogin.hidden = true;
     els.form.hidden = false;
+    // 系所下拉選項與 profile 載入狀態無關(自身有 _deptsLoaded 防重複),
+    // 每次進頁都確保已填,否則 profileState.loaded 早被設過 → 下拉永遠空。
+    await ensureDeptOptions();
     if (!profileState.loaded) {
         const p = await fetchProfile().catch(() => null);
         if (p) renderProfileForm(p);
+    } else if (els.dept) {
+        // profile 已載入過、下拉這次才填好 → 用暫存的科系把選項 select 起來
+        els.dept.value = profileState.department || '';
     }
 }
 

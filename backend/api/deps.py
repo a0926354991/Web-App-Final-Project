@@ -87,6 +87,7 @@ def row_to_profile(row: sqlite3.Row) -> UserProfile:
         pref_sweetness=row["pref_sweetness"],
         pref_loading=row["pref_loading"],
         interests=_json.loads(row["interests"]),
+        department=_row_get(row, "department", ""),
         weight_recommendation=_row_get(row, "weight_recommendation", 25),
         weight_sweetness=_row_get(row, "weight_sweetness", 20),
         weight_loading=_row_get(row, "weight_loading", 20),

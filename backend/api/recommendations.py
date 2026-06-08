@@ -384,6 +384,10 @@ def compute_explanation(
     """根據 fit 各成份的高低,生出一句中文說明。"""
     highlights: list[str] = []
 
+    # 本系課優先標示 (使用者有填科系且這門課由本系開 / 合開)
+    if fit.get("is_own_dept"):
+        highlights.append("⭐ 你本系開的課")
+
     if fit["recommendation"] >= 80 and fit["n_reviews"] > 0:
         highlights.append(f"PTT 推薦度高({fit['recommendation']:.0f}/100,{fit['n_reviews']} 篇評價)")
     elif fit["recommendation"] >= 60 and fit["n_reviews"] >= 2:
@@ -666,6 +670,37 @@ def _maybe_semantic_boost(
     return round(SEMANTIC_BLEND * sem + (1 - SEMANTIC_BLEND) * tfidf_score, 1)
 
 
+# 科系加成:使用者所屬系所 vs 課程開課系所。加在興趣分上 (clamp 100),
+# 不另開第 6 個成份,以維持「5 成份加權」的權重結構與既有 UI。
+#
+# 設計:NTU 很多課是「多系所合開」,department 欄是「A系 / B學程 / C所」這種
+# 串接字串。對使用者而言,只要自己的系名出現在裡面,就是「本系開的課」,應給
+# 滿加成 (含純本系課與本系參與的合開課)。反向 (課程系名是使用者系名的子字串,
+# 較少見) 視為弱關聯,給中等加成。
+_DEPT_BONUS_SAME = 35.0   # 本系課:使用者系名出現在課程開課系所中 (含合開)
+_DEPT_BONUS_KIN = 15.0    # 弱關聯:課程系名反向出現在使用者系名中
+
+
+def _department_match_bonus(user_dept: str, course_key: tuple[str, str]) -> float:
+    """回傳 0 / KIN / SAME 的科系相符加成。user_dept 空 → 0。"""
+    user_dept = (user_dept or "").strip()
+    if not user_dept:
+        return 0.0
+    parts = _CACHE.get("text_index", {}).get(course_key)
+    if not parts:
+        return 0.0
+    course_dept = (parts.get("dept") or "").strip()
+    if not course_dept:
+        return 0.0
+    # 使用者系名出現在課程開課系所 → 本系課 (純本系 or 本系參與合開),滿加成
+    if user_dept in course_dept:
+        return _DEPT_BONUS_SAME
+    # 反向子字串 (罕見) → 弱關聯
+    if course_dept in user_dept:
+        return _DEPT_BONUS_KIN
+    return 0.0
+
+
 def compute_fit(
     profile: dict[str, Any],
     stats: dict[str, Any] | None,
@@ -713,6 +748,14 @@ def compute_fit(
     # 失敗 / 無 GEMINI_API_KEY → semantic 回 None → 維持純 TF-IDF。
     interest_score = _maybe_semantic_boost(profile, course_key, interest_score) if use_semantic else interest_score
 
+    # 科系加成:使用者所屬系所與課程開課系所相符 → 興趣分加成 (clamp 100)。
+    # 本系課大加、弱關聯小加;未填科系則完全不影響 (bonus=0)。
+    dept_bonus = _department_match_bonus(profile.get("department", ""), course_key)
+    if dept_bonus:
+        interest_score = min(100.0, interest_score + dept_bonus)
+    # 滿加成 = 本系課 (含本系參與的合開),供推薦理由標「本系課」
+    is_own_dept = dept_bonus >= _DEPT_BONUS_SAME
+
     w = weights or DEFAULT_WEIGHTS
     total = (
         w["recommendation"] * rec_score
@@ -731,6 +774,7 @@ def compute_fit(
         "ability": round(ability_score, 1),
         "n_reviews": (stats or {}).get("n_reviews", 0),
         "is_estimated": estimated,
+        "is_own_dept": is_own_dept,
     }
     fit["matched_interests"] = matched_interests
     fit["required_abilities"] = required_abilities
@@ -946,6 +990,7 @@ def profile_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:
             "ability_humanities": 50, "ability_teamwork": 50,
             "pref_sweetness": 50, "pref_loading": 50,
             "interests": [],
+            "department": "",
             "weight_recommendation": 25, "weight_sweetness": 20, "weight_loading": 20,
             "weight_interest": 20, "weight_ability": 15,
         }
@@ -959,6 +1004,7 @@ def profile_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:
         "pref_sweetness": row["pref_sweetness"],
         "pref_loading": row["pref_loading"],
         "interests": _json.loads(row["interests"]),
+        "department": row["department"] if "department" in keys else "",
         "weight_recommendation": row["weight_recommendation"] if "weight_recommendation" in keys else 25,
         "weight_sweetness": row["weight_sweetness"] if "weight_sweetness" in keys else 20,
         "weight_loading": row["weight_loading"] if "weight_loading" in keys else 20,

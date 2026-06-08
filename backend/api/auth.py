@@ -152,6 +152,7 @@ def init_auth_tables(conn: sqlite3.Connection) -> None:
             pref_sweetness     INTEGER NOT NULL DEFAULT 50,
             pref_loading       INTEGER NOT NULL DEFAULT 50,
             interests          TEXT NOT NULL DEFAULT '[]',
+            department         TEXT NOT NULL DEFAULT '',
             weight_recommendation INTEGER NOT NULL DEFAULT 25,
             weight_sweetness      INTEGER NOT NULL DEFAULT 20,
             weight_loading        INTEGER NOT NULL DEFAULT 20,
@@ -170,6 +171,9 @@ def init_auth_tables(conn: sqlite3.Connection) -> None:
     ):
         if col not in prof_cols:
             conn.execute(f"ALTER TABLE user_profiles ADD COLUMN {col} INTEGER NOT NULL DEFAULT {default}")
+    # Migration: 舊 user_profiles 沒有 department 欄位 → 補上 (空字串 = 未填)
+    if "department" not in prof_cols:
+        conn.execute("ALTER TABLE user_profiles ADD COLUMN department TEXT NOT NULL DEFAULT ''")
     # Migration: 舊 sessions 表如果沒有 expires_at,加上去
     cols = {r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()}
     if "expires_at" not in cols:
